@@ -8,6 +8,16 @@ comentario sale de una evaluación concreta del motor.
 
 ## Qué hace
 
+**Repaso guiado (lo que ves al analizar)**
+- Una idea por pantalla, sin scroll: tablero grande arriba, explicación corta
+  debajo y un botón para pasar a la siguiente. Está pensado para el móvil.
+- Cada consejo lleva siempre una posición dibujada: la apertura se explica sobre
+  el tablero al que llevó la teoría, y cada hábito (rey sin enrocar, dama
+  temprana, piezas dormidas) se ilustra con la posición y las casillas marcadas.
+- En los momentos clave se dibujan las dos opciones a la vez: en rojo lo que
+  jugaste, en verde lo que recomendaba el motor.
+- El informe completo jugada a jugada sigue disponible desde el último paso.
+
 **Por partida**
 - Evalúa las N+1 posiciones de la partida y calcula, para cada jugada, la pérdida
   en centipeones y la caída de probabilidad de victoria.

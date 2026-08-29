@@ -71,8 +71,9 @@ export function generarConsejos(
       .slice(0, 4)
       .map((j) => `${nombreJugada(j.ply)} ${j.san}`)
       .join(', ');
+    const uno = graves.length === 1;
     consejos.push({
-      titulo: `${graves.length} error${graves.length === 1 ? '' : 'es'} grave${graves.length === 1 ? '' : 's'} decidieron la partida`,
+      titulo: uno ? 'Un error grave decidio la partida' : `${graves.length} errores graves decidieron la partida`,
       detalle: `Revisa ${listado}. Antes de mover, comprueba siempre tres cosas: que jaques tiene el rival, que capturas tiene y que piezas tuyas quedan sin defender.`,
       prioridad: 1,
     });

@@ -8,8 +8,16 @@ import { DetalleJugada } from './components/DetalleJugada';
 import { Resumen } from './components/Resumen';
 import { Historico } from './components/Historico';
 import { Progreso } from './components/Progreso';
+import { Guion } from './components/Guion';
 
 type Pestana = 'analizar' | 'historico' | 'progreso';
+
+/**
+ * 'guion' es el repaso guiado paso a paso, pantalla a pantalla: es el modo por
+ * defecto porque es el que funciona en el movil. 'detalle' es el informe
+ * completo de siempre, para quien quiera recorrer la partida jugada a jugada.
+ */
+type Modo = 'guion' | 'detalle';
 
 export default function App() {
   const [pestana, setPestana] = useState<Pestana>('analizar');
@@ -20,6 +28,7 @@ export default function App() {
   const [coachIa, setCoachIa] = useState(false);
   const [motor, setMotor] = useState<string | null>(null);
   const [soloMisJugadas, setSoloMisJugadas] = useState(true);
+  const [modo, setModo] = useState<Modo>('guion');
 
   const [partidas, setPartidas] = useState<PartidaResumida[]>([]);
   const [stats, setStats] = useState<EstadisticasGlobales | null>(null);
@@ -59,6 +68,7 @@ export default function App() {
       const r = await api.analizar(datos);
       setInforme(r);
       setIndice(primerFalloDe(r));
+      setModo('guion');
       void refrescarHistorico();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo analizar la partida.');
@@ -73,6 +83,7 @@ export default function App() {
       const r = await api.partida(id);
       setInforme(r);
       setIndice(primerFalloDe(r));
+      setModo('guion');
       setPestana('analizar');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo abrir la partida.');
@@ -88,7 +99,7 @@ export default function App() {
   // Navegacion por teclado: recorrer la partida con las flechas es lo que hace
   // usable un analisis largo.
   useEffect(() => {
-    if (!informe) return;
+    if (!informe || modo !== 'detalle') return;
     const alPulsar = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && /input|textarea|select/i.test(e.target.tagName)) return;
       if (e.key === 'ArrowRight') setIndice((i) => Math.min(i + 1, informe.jugadas.length - 1));
@@ -98,10 +109,20 @@ export default function App() {
     };
     window.addEventListener('keydown', alPulsar);
     return () => window.removeEventListener('keydown', alPulsar);
-  }, [informe]);
+  }, [informe, modo]);
 
   const jugadaActual = informe && indice >= 0 ? (informe.jugadas[indice] ?? null) : null;
   const orientacion: Color = informe?.colorJugador ?? 'w';
+
+  if (pestana === 'analizar' && informe && !cargando && modo === 'guion') {
+    return (
+      <Guion
+        informe={informe}
+        onSalir={() => setInforme(null)}
+        onVerDetalle={() => setModo('detalle')}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -149,6 +170,12 @@ export default function App() {
 
             {informe && !cargando && (
               <>
+                <div className="volver-guion">
+                  <button type="button" className="secundario" onClick={() => setModo('guion')}>
+                    ← Volver al repaso paso a paso
+                  </button>
+                </div>
+
                 <Resumen informe={informe} />
 
                 <section className="analisis">
