@@ -1,4 +1,5 @@
 import type {
+  Color,
   Consejo,
   EstadisticasGlobales,
   Etiqueta,
@@ -7,6 +8,7 @@ import type {
   PartidaResumida,
 } from '../types.js';
 import { DESCRIPCIONES } from '../analysis/tags.js';
+import { generarConsejos } from '../analysis/explain.js';
 import { redondear } from '../analysis/scoring.js';
 import { getDb } from './index.js';
 
@@ -117,6 +119,42 @@ export function borrarPartida(usuario: string, id: string): boolean {
     return db.prepare('DELETE FROM partidas WHERE id = ? AND usuario = ?').run(id, usuario);
   });
   return borrar().changes > 0;
+}
+
+/**
+ * Rehace una partida guardada desde el otro bando.
+ *
+ * El informe ya contiene el analisis de los dos colores, asi que cambiar de
+ * lado no exige volver a pasar el motor: basta con recalcular los consejos y
+ * los agregados derivados. Hace falta porque, si el color se eligio mal, el
+ * historico y las estadisticas quedarian contando los errores del rival como
+ * propios.
+ */
+export function cambiarColor(usuario: string, id: string, color: Color): InformePartida | null {
+  const informe = obtenerPartida(usuario, id);
+  if (!informe) return null;
+  if (informe.colorJugador === color) return informe;
+
+  const corregido: InformePartida = {
+    ...informe,
+    colorJugador: color,
+    consejos: generarConsejos(
+      informe.resumen[color],
+      informe.jugadas.filter((j) => j.color === color),
+      informe.apertura?.consejo ?? null,
+    ),
+  };
+
+  const db = getDb();
+  db.transaction(() => {
+    // Las filas derivadas son del color anterior: hay que retirarlas antes de
+    // reescribirlas, o se mezclarian las etiquetas de los dos bandos.
+    db.prepare('DELETE FROM etiquetas WHERE partida_id = ? AND usuario = ?').run(id, usuario);
+    db.prepare('DELETE FROM fases WHERE partida_id = ? AND usuario = ?').run(id, usuario);
+    guardarPartida(usuario, corregido);
+  })();
+
+  return corregido;
 }
 
 /**

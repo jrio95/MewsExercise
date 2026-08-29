@@ -133,3 +133,43 @@ test('un usuario sin partidas devuelve estadisticas vacias, no un error', () => 
   assert.deepEqual(stats.aperturas, []);
   assert.equal(stats.perdidaPorFase.apertura.jugadas, 0);
 });
+
+test('cambiar de bando rehace consejos y agregados sin volver a analizar', async (t) => {
+  if (!motorDisponible) return t.skip('stockfish no disponible en este entorno');
+
+  const { cambiarColor } = await import('../src/db/games.js');
+
+  // Se guarda con el color equivocado, que es justo lo que pasaba cuando el
+  // formulario elegia blancas por defecto.
+  const informe = await analizarPartida({ pgn: PGN_OPERA, nivel: 'rapido', colorJugador: 'w' });
+  guardarPartida('cris', informe);
+
+  const listadoAntes = listarPartidas('cris');
+  assert.equal(listadoAntes[0]!.colorJugador, 'w');
+  assert.equal(listadoAntes[0]!.precision, informe.resumen.w.precision);
+
+  const corregido = cambiarColor('cris', informe.id, 'b');
+  assert.ok(corregido);
+  assert.equal(corregido.colorJugador, 'b');
+  assert.equal(corregido.jugadas.length, informe.jugadas.length, 'el analisis no se rehace');
+
+  const listadoDespues = listarPartidas('cris');
+  assert.equal(listadoDespues.length, 1, 'no se duplica la partida');
+  assert.equal(listadoDespues[0]!.colorJugador, 'b');
+  assert.equal(listadoDespues[0]!.precision, informe.resumen.b.precision);
+  assert.equal(listadoDespues[0]!.graves, informe.resumen.b.conteo.grave);
+
+  // Las etiquetas agregadas deben ser las del nuevo bando, no una mezcla.
+  const stats = calcularEstadisticas('cris');
+  const etiquetas = new Set(stats.erroresFrecuentes.map((e) => e.etiqueta));
+  for (const propia of Object.keys(informe.resumen.b.etiquetas)) {
+    assert.ok(etiquetas.has(propia as never), `falta la etiqueta ${propia} del bando corregido`);
+  }
+  for (const ajena of Object.keys(informe.resumen.w.etiquetas)) {
+    if (ajena in informe.resumen.b.etiquetas) continue;
+    assert.ok(!etiquetas.has(ajena as never), `quedo colgada la etiqueta ${ajena} del bando anterior`);
+  }
+
+  assert.equal(cambiarColor('cris', 'no-existe', 'w'), null);
+});
+

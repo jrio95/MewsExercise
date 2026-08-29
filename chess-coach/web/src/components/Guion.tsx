@@ -16,6 +16,8 @@ interface Props {
   informe: InformePartida;
   onSalir: () => void;
   onVerDetalle: () => void;
+  /** Se avisa al cambiar de bando para corregir también el historial guardado. */
+  onCambiarColor: (color: Color) => void;
 }
 
 /** Separación entre tablero y texto, en píxeles (debe coincidir con el CSS). */
@@ -66,7 +68,7 @@ function useLadoTablero(
  * ni una más. Saltar de un consejo al siguiente movía el tablero varias jugadas
  * de golpe y se perdía el hilo de cómo se había llegado hasta ahí.
  */
-export function Guion({ informe, onSalir, onVerDetalle }: Props) {
+export function Guion({ informe, onSalir, onVerDetalle, onCambiarColor }: Props) {
   // El color se puede cambiar aquí: si el análisis dedujo mal de qué bando
   // jugabas, verías la partida entera del revés y comentada al contrario.
   const [color, setColor] = useState<Color>(informe.colorJugador);
@@ -141,7 +143,11 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
         <button
           type="button"
           className="icono girar"
-          onClick={() => setColor((c) => (c === 'w' ? 'b' : 'w'))}
+          onClick={() => {
+            const otro: Color = color === 'w' ? 'b' : 'w';
+            setColor(otro);
+            onCambiarColor(otro);
+          }}
           title="Ver la partida desde el otro bando"
           aria-label="Cambiar de bando"
         >

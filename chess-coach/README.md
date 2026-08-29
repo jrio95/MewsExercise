@@ -18,8 +18,13 @@ comentario sale de una evaluación concreta del motor.
   Cuando el rival falla se te avisa sin dar la solución, para que la busques.
 - También se reconoce lo que haces bien, pero solo con mérito comprobable: haber
   encontrado la jugada del motor justo después de un fallo del rival.
-- Si el análisis dedujo mal de qué bando jugabas, el botón ⇅ cambia de bando y
-  recalcula el repaso entero desde el otro lado.
+- El color es una elección explícita en el formulario, con los nombres reales
+  sacados de las cabeceras del PGN: sin elegirlo no se puede analizar. Se recuerda
+  el nombre para preseleccionarlo la próxima vez.
+- El botón ⇅ cambia de bando durante el repaso y, además de girar el tablero,
+  corrige el color de la partida ya guardada (`PATCH /api/partidas/:id/color`),
+  para que el historial y las estadísticas no cuenten los errores del rival como
+  propios.
 - Los consejos no viven aparte: están colgados de la parada exacta en la que la
   partida los demuestra, y la barra de progreso marca dónde están.
 - Antes de una jugada clave se dibujan las dos opciones a la vez: en rojo lo que
@@ -152,6 +157,7 @@ verdad solo toca `usuarioDe()` en `server/src/routes/api.ts`.
 | `POST` | `/api/analizar` | Analiza un PGN. Cuerpo: `pgn`, `nivel`, `colorJugador`, `nombreJugador`, `guardar`, `narrar`. |
 | `GET` | `/api/partidas` | Historial del usuario. |
 | `GET` | `/api/partidas/:id` | Informe completo de una partida. |
+| `PATCH` | `/api/partidas/:id/color` | Corrige el bando de una partida guardada, sin volver a analizarla. |
 | `DELETE` | `/api/partidas/:id` | Borra una partida. |
 | `GET` | `/api/estadisticas` | Agregados y plan de entrenamiento. |
 

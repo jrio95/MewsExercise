@@ -5,6 +5,7 @@ import { narrarPartida, coachDisponible } from '../coach/llm.js';
 import {
   borrarPartida,
   calcularEstadisticas,
+  cambiarColor,
   guardarPartida,
   listarPartidas,
   obtenerPartida,
@@ -88,6 +89,24 @@ api.get('/partidas', (req, res) => {
 
 api.get('/partidas/:id', (req, res) => {
   const informe = obtenerPartida(usuarioDe(req), req.params.id);
+  if (!informe) {
+    res.status(404).json({ error: 'Partida no encontrada' });
+    return;
+  }
+  res.json(informe);
+});
+
+const esquemaColor = z.object({ colorJugador: z.enum(['w', 'b']) });
+
+/** Corrige el bando de una partida ya guardada, sin volver a analizarla. */
+api.patch('/partidas/:id/color', (req, res) => {
+  const parsed = esquemaColor.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Color invalido' });
+    return;
+  }
+
+  const informe = cambiarColor(usuarioDe(req), req.params.id, parsed.data.colorJugador);
   if (!informe) {
     res.status(404).json({ error: 'Partida no encontrada' });
     return;

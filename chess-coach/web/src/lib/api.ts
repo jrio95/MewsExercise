@@ -42,7 +42,8 @@ async function peticion<T>(ruta: string, init?: RequestInit): Promise<T> {
 export interface PeticionAnalisis {
   pgn: string;
   nivel: 'rapido' | 'normal' | 'profundo';
-  colorJugador: 'w' | 'b' | 'auto';
+  /** Siempre explícito: adivinarlo llevaba a analizar la partida del bando equivocado. */
+  colorJugador: 'w' | 'b';
   nombreJugador?: string;
   narrar: boolean;
 }
@@ -59,6 +60,13 @@ export const api = {
   partida: (id: string) => peticion<InformePartida>(`/partidas/${id}`),
 
   borrar: (id: string) => peticion<void>(`/partidas/${id}`, { method: 'DELETE' }),
+
+  /** Corrige el bando de una partida guardada, sin volver a analizarla. */
+  cambiarColor: (id: string, colorJugador: 'w' | 'b') =>
+    peticion<InformePartida>(`/partidas/${id}/color`, {
+      method: 'PATCH',
+      body: JSON.stringify({ colorJugador }),
+    }),
 
   estadisticas: () => peticion<EstadisticasGlobales>('/estadisticas'),
 };

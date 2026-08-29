@@ -90,6 +90,25 @@ export default function App() {
     }
   };
 
+  /**
+   * Cambia el bando desde el que se lee la partida.
+   *
+   * No basta con girar el tablero: el historial y las estadísticas se calculan
+   * a partir del color guardado, así que si estaba mal seguirían contando los
+   * errores del rival como propios.
+   */
+  const corregirColor = async (color: Color) => {
+    if (!informe) return;
+    try {
+      const corregido = await api.cambiarColor(informe.id, color);
+      setInforme(corregido);
+      void refrescarHistorico();
+    } catch {
+      // Si la partida no estaba guardada, el repaso ya se ve desde el otro
+      // bando igualmente: no hay nada que avisar al usuario.
+    }
+  };
+
   const borrarPartida = async (id: string) => {
     await api.borrar(id).catch(() => undefined);
     if (informe?.id === id) setInforme(null);
@@ -120,6 +139,7 @@ export default function App() {
         informe={informe}
         onSalir={() => setInforme(null)}
         onVerDetalle={() => setModo('detalle')}
+        onCambiarColor={corregirColor}
       />
     );
   }
