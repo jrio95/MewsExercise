@@ -5,7 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "node server/dist/index.js",
     "healthcheckPath": "/api/salud",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

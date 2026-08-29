@@ -42,7 +42,7 @@ api.get('/salud', async (_req, res) => {
   const motorOk = await pool.healthy();
   res.status(motorOk ? 200 : 503).json({
     ok: motorOk,
-    motor: motorOk ? 'stockfish disponible' : 'stockfish no responde',
+    motor: motorOk ? pool.versionMotor : 'el motor no responde',
     procesos: poolSize,
     profundidades: DEPTHS,
     coachIa: coachDisponible(),

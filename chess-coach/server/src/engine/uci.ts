@@ -30,6 +30,8 @@ export class UciEngine {
   private listeners: ((line: string) => void)[] = [];
   private ready: Promise<void> | null = null;
   private busy = false;
+  /** Nombre que el motor declara en el saludo UCI, p.ej. "Stockfish 15.1". */
+  nombre = 'desconocido';
 
   async start(): Promise<void> {
     if (this.ready) return this.ready;
@@ -54,7 +56,9 @@ export class UciEngine {
       for (const l of [...this.listeners]) l(line);
     });
 
-    await this.send('uci', (line) => line === 'uciok');
+    const saludo = await this.send('uci', (line) => line === 'uciok');
+    const idName = saludo.find((l) => l.startsWith('id name '));
+    if (idName) this.nombre = idName.slice('id name '.length).trim();
     this.write(`setoption name Threads value ${ENGINE_THREADS}`);
     this.write(`setoption name Hash value ${ENGINE_HASH_MB}`);
     await this.isReady();

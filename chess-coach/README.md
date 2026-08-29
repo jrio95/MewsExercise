@@ -3,7 +3,7 @@
 Pega el PGN de una partida y te dice qué jugaste mal, qué era mejor, en qué fase
 pierdes más y qué errores repites de una partida a otra.
 
-El análisis lo hace **Stockfish 16** en el servidor. No hay adivinanzas: cada
+El análisis lo hace **Stockfish** en el servidor. No hay adivinanzas: cada
 comentario sale de una evaluación concreta del motor.
 
 ## Qué hace

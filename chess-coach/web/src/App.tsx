@@ -18,6 +18,7 @@ export default function App() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [coachIa, setCoachIa] = useState(false);
+  const [motor, setMotor] = useState<string | null>(null);
   const [soloMisJugadas, setSoloMisJugadas] = useState(true);
 
   const [partidas, setPartidas] = useState<PartidaResumida[]>([]);
@@ -25,7 +26,13 @@ export default function App() {
   const [cargandoHistorico, setCargandoHistorico] = useState(false);
 
   useEffect(() => {
-    api.salud().then((s) => setCoachIa(s.coachIa)).catch(() => setCoachIa(false));
+    api
+      .salud()
+      .then((s) => {
+        setCoachIa(s.coachIa);
+        setMotor(s.motor);
+      })
+      .catch(() => setCoachIa(false));
   }, []);
 
   const refrescarHistorico = useCallback(async () => {
@@ -203,8 +210,8 @@ export default function App() {
 
       <footer>
         <p>
-          Analisis con Stockfish 16. Tu historico se guarda en el servidor asociado a un identificador
-          anonimo de este navegador.
+          Analisis con {motor ?? 'Stockfish'}. Tu historico se guarda en el servidor asociado a un
+          identificador anonimo de este navegador.
         </p>
       </footer>
     </div>

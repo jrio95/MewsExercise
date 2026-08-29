@@ -71,6 +71,16 @@ class EnginePool {
     }
   }
 
+  /**
+   * Version del motor tal y como el propio binario la declara.
+   *
+   * La version que trae cada distribucion cambia (Debian bookworm empaqueta
+   * Stockfish 15.1, otras 16 o 17), asi que la leemos en vez de codificarla.
+   */
+  get versionMotor(): string {
+    return this.engines.find((s) => s.engine.nombre !== 'desconocido')?.engine.nombre ?? 'desconocido';
+  }
+
   shutdown(): void {
     for (const slot of this.engines) slot.engine.kill();
     this.engines = [];
