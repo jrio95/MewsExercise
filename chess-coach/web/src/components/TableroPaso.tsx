@@ -1,26 +1,32 @@
 import { Chessboard } from 'react-chessboard';
 import type { Arrow, Square } from 'react-chessboard/dist/chessboard/types';
-import type { Paso } from '../lib/guion';
+import type { Color } from '@shared';
+import type { Flecha, Resaltadas } from '../lib/guion';
 
 interface Props {
-  paso: Paso;
+  fen: string;
+  orientacion: Color;
+  flechas: Flecha[];
+  resaltadas: Resaltadas;
   /** Lado en píxeles, calculado por el contenedor según el hueco libre. */
   lado: number;
 }
 
-export function TableroPaso({ paso, lado }: Props) {
-  const flechas: Arrow[] = paso.flechas.map((f) => [f.desde as Square, f.hasta as Square, f.color]);
+export function TableroPaso({ fen, orientacion, flechas, resaltadas, lado }: Props) {
+  const dibujadas: Arrow[] = flechas.map((f) => [f.desde as Square, f.hasta as Square, f.color]);
 
   return (
     <div className="hueco-tablero">
       <div style={{ width: lado, height: lado }}>
         <Chessboard
-          position={paso.fen}
+          position={fen}
           boardWidth={lado}
-          boardOrientation={paso.orientacion === 'w' ? 'white' : 'black'}
+          boardOrientation={orientacion === 'w' ? 'white' : 'black'}
           arePiecesDraggable={false}
-          customArrows={flechas}
-          customSquareStyles={paso.resaltadas}
+          customArrows={dibujadas}
+          customSquareStyles={resaltadas}
+          // Al avanzar de una en una, la animación deja ver qué pieza se movió.
+          animationDuration={220}
           customBoardStyle={{ borderRadius: '10px' }}
           customDarkSquareStyle={{ backgroundColor: '#6b8f6b' }}
           customLightSquareStyle={{ backgroundColor: '#e9edd8' }}

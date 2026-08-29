@@ -2,7 +2,6 @@ import { Chess, type Square } from 'chess.js';
 import type {
   Calidad,
   Color,
-  Consejo,
   EtiquetaHabito,
   Evaluacion,
   InformePartida,
@@ -13,8 +12,8 @@ export const COLOR_JUGADA = '#e0653f';
 export const COLOR_MEJOR = '#3fa66b';
 const AVISO = 'rgba(224, 175, 104, 0.55)';
 const PELIGRO = 'rgba(247, 118, 142, 0.55)';
+const ULTIMA = 'rgba(125, 207, 255, 0.30)';
 
-export type TipoPaso = 'resumen' | 'apertura' | 'jugada' | 'consejo' | 'cierre';
 export type Tono = 'bien' | 'mal' | 'aviso' | 'neutro';
 
 export interface Flecha {
@@ -28,28 +27,45 @@ export interface Leyenda {
   texto: string;
 }
 
-export interface Paso {
-  id: string;
-  tipo: TipoPaso;
-  /** Rótulo corto de sección, para orientar dentro del recorrido. */
+export type Resaltadas = Record<string, { backgroundColor: string }>;
+
+/**
+ * Lo que el entrenador tiene que decir en una parada concreta del recorrido.
+ *
+ * Va siempre asociada a una posición del tablero, no a un texto suelto: si no
+ * se ven las piezas, el consejo no se entiende.
+ */
+export interface Anotacion {
+  clase: 'clave' | 'habito' | 'apertura' | 'fase';
   seccion: string;
   titulo: string;
   texto: string;
-
-  fen: string;
-  orientacion: Color;
   flechas: Flecha[];
-  resaltadas: Record<string, { backgroundColor: string }>;
+  resaltadas: Resaltadas;
   leyendas: Leyenda[];
-
   insignia?: { texto: string; tono: Tono };
   evolucion?: { antes: Evaluacion; despues: Evaluacion };
   linea?: string[];
-  /** Reparto de tus jugadas por calidad, para pintarlo como barra apilada. */
-  desglose?: { calidad: Calidad; veces: number }[];
 }
 
-/** Orden de mejor a peor: es el que se usa en la barra y en la leyenda. */
+export interface Recorrido {
+  orientacion: Color;
+  /** fens[k] es el tablero tras k medias jugadas; fens[0] es la posición inicial. */
+  fens: string[];
+  jugadas: JugadaAnalizada[];
+  /** Anotación que toca mostrar al llegar a esa parada. */
+  anotaciones: Map<number, Anotacion>;
+  /** Paradas con anotación, en orden: las usa el botón de salto. */
+  hitos: number[];
+  resumen: {
+    titulo: string;
+    texto: string;
+    insignia: { texto: string; tono: Tono };
+    desglose: { calidad: Calidad; veces: number }[];
+  };
+  cierre: { titulo: string; puntos: string[] };
+}
+
 export const ORDEN_CALIDAD: Calidad[] = [
   'mejor',
   'excelente',
@@ -77,169 +93,97 @@ const NOMBRE_CALIDAD: Record<Calidad, [singular: string, plural: string]> = {
   grave: ['error grave', 'errores graves'],
 };
 
-/** Nombre de una calidad concordado con el numero de jugadas que la tienen. */
 export function nombreCalidad(calidad: Calidad, veces: number): string {
   const [singular, plural] = NOMBRE_CALIDAD[calidad];
   return veces === 1 ? singular : plural;
 }
 
-const FEN_INICIAL = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+export const ETIQUETA_CALIDAD: Record<Calidad, string> = {
+  mejor: 'Mejor jugada',
+  excelente: 'Excelente',
+  buena: 'Buena',
+  imprecision: 'Imprecisión',
+  error: 'Error',
+  grave: 'Error grave',
+};
 
 /**
- * Construye el recorrido guiado de una partida: una pantalla por idea.
+ * Prepara el recorrido de una partida como una única línea temporal.
  *
- * El orden es el de una clase: primero cómo acabó la cosa, luego la apertura,
- * después los momentos que decidieron la partida y por último los hábitos a
- * corregir. Cada paso lleva siempre una posición concreta, porque un consejo
- * sobre la apertura sin ver las piezas no enseña nada.
+ * El repaso avanza jugada a jugada, sin saltos: así se ve cómo se llega a cada
+ * posición en lugar de aparecer de golpe ocho jugadas más adelante. Los
+ * consejos no viven aparte, sino colgados de la parada exacta en la que la
+ * partida los demuestra.
  */
-export function construirGuion(informe: InformePartida): Paso[] {
+export function construirRecorrido(informe: InformePartida): Recorrido {
   const color = informe.colorJugador;
-  const mias = informe.jugadas.filter((j) => j.color === color);
-  const pasos: Paso[] = [];
+  const jugadas = informe.jugadas;
+  const mias = jugadas.filter((j) => j.color === color);
 
-  pasos.push(pasoResumen(informe));
+  const fens = [jugadas[0]?.fenAntes ?? new Chess().fen(), ...jugadas.map((j) => j.fenDespues)];
+  const anotaciones = new Map<number, Anotacion>();
 
-  const apertura = pasoApertura(informe);
-  if (apertura) pasos.push(apertura);
-
-  const clave = momentosClave(mias);
-  clave.forEach((j, i) => pasos.push(pasoJugada(informe, j, i + 1, clave.length)));
-
-  for (const c of consejosIlustrables(informe)) pasos.push(c);
-
-  pasos.push(pasoCierre(informe, clave));
-
-  return pasos;
-}
-
-/* ------------------------------------------------------------------ */
-/* Pasos                                                               */
-/* ------------------------------------------------------------------ */
-
-function pasoResumen(informe: InformePartida): Paso {
-  const color = informe.colorJugador;
-  const resumen = informe.resumen[color];
-  const ultima = informe.jugadas.at(-1);
-  const yo = color === 'w' ? informe.blancas : informe.negras;
-  const rival = color === 'w' ? informe.negras : informe.blancas;
-
-  const fallos = resumen.conteo.grave + resumen.conteo.error;
-  const texto =
-    fallos === 0
-      ? 'Jugaste sin errores serios. Vamos a repasar dónde había algo mejor.'
-      : fallos === 1
-        ? 'Cometiste 1 fallo importante. Vamos a verlo con calma.'
-        : `Cometiste ${fallos} fallos importantes. Vamos a verlos uno a uno.`;
-
-  return {
-    id: 'resumen',
-    tipo: 'resumen',
-    seccion: 'Tu partida',
-    titulo: `${yo} contra ${rival}`,
-    texto,
-    fen: ultima?.fenDespues ?? FEN_INICIAL,
-    orientacion: color,
-    flechas: [],
-    resaltadas: {},
-    leyendas: [],
-    insignia: {
-      texto: `${resumen.precision}% de precisión`,
-      tono: resumen.precision >= 90 ? 'bien' : resumen.precision >= 75 ? 'aviso' : 'mal',
-    },
-    desglose: ORDEN_CALIDAD.map((calidad) => ({ calidad, veces: resumen.conteo[calidad] })).filter(
-      (d) => d.veces > 0,
-    ),
-  };
-}
-
-/** La apertura, enseñando la posición real a la que llevó la teoría. */
-function pasoApertura(informe: InformePartida): Paso | null {
-  const color = informe.colorJugador;
-  const ap = informe.apertura;
-
-  if (!ap) {
-    const hasta = informe.jugadas[Math.min(5, informe.jugadas.length - 1)];
-    if (!hasta) return null;
-    return {
-      id: 'apertura',
-      tipo: 'apertura',
-      seccion: 'Apertura',
-      titulo: 'Apertura sin nombre conocido',
-      texto:
-        'Tus primeras jugadas no coinciden con ninguna apertura del libro. No es un error, pero jugar algo estudiado te ahorra pensar en posiciones que ya están resueltas.',
-      fen: hasta.fenDespues,
-      orientacion: color,
-      flechas: [],
-      resaltadas: casillasCentrales(),
-      leyendas: [{ color: AVISO, texto: 'el centro, lo que se disputa en la apertura' }],
-    };
+  // Los momentos clave se anotan en la posición ANTERIOR a la jugada: es donde
+  // había que decidir, y donde tiene sentido dibujar las dos alternativas.
+  for (const j of momentosClave(mias)) {
+    const parada = j.ply - 1;
+    if (parada >= 1) colocar(anotaciones, parada, anotacionClave(j));
   }
 
-  const ultimaTeorica = informe.jugadas[ap.plyLibro - 1];
-  const primeraPropia = informe.jugadas[ap.plyLibro];
+  const apertura = anotacionApertura(informe);
+  if (apertura) colocar(anotaciones, apertura.parada, apertura.anotacion);
 
-  const flechas: Flecha[] = [];
-  if (ultimaTeorica) {
-    flechas.push({
-      desde: ultimaTeorica.uci.slice(0, 2),
-      hasta: ultimaTeorica.uci.slice(2, 4),
-      color: COLOR_MEJOR,
-    });
-  }
-  if (primeraPropia) {
-    flechas.push({
-      desde: primeraPropia.uci.slice(0, 2),
-      hasta: primeraPropia.uci.slice(2, 4),
-      color: COLOR_JUGADA,
-    });
-  }
-
-  const jugadaTeorica = Math.ceil(ap.plyLibro / 2);
-
-  // La primera jugada fuera de libro puede ser del rival: atribuirsela al
-  // usuario seria falso, y ademas confunde sobre de quien es el turno en la
-  // posicion que esta viendo.
-  const laSacoElUsuario = primeraPropia?.color === color;
-
-  let texto: string;
-  if (!primeraPropia) {
-    texto = 'Toda la partida se mantuvo dentro de la teoría de esta apertura.';
-  } else if (laSacoElUsuario) {
-    texto = `Hasta aquí seguiste teoría conocida (jugada ${jugadaTeorica}). La siguiente, ${primeraPropia.san}, ya es decisión tuya: a partir de ese punto no te ayuda la memoria, sino entender el plan.`;
-  } else {
-    texto = `Hasta aquí la partida seguía teoría conocida (jugada ${jugadaTeorica}). Quien se salió del libro fue tu rival, con ${primeraPropia.san}: desde ahí jugáis los dos por vuestra cuenta.`;
-  }
-
-  const leyendas: Leyenda[] = [{ color: COLOR_MEJOR, texto: 'última jugada de teoría' }];
-  if (primeraPropia) {
-    leyendas.push({
-      color: COLOR_JUGADA,
-      texto: laSacoElUsuario ? 'tu primera jugada propia' : 'tu rival sale del libro',
-    });
+  for (const habito of informe.resumen[color].habitos) {
+    const ubicada = anotacionHabito(habito, informe, mias);
+    if (ubicada) colocar(anotaciones, ubicada.parada, ubicada.anotacion);
   }
 
   return {
-    id: 'apertura',
-    tipo: 'apertura',
-    seccion: 'Apertura',
-    titulo: ap.nombre,
-    texto,
-    fen: ultimaTeorica?.fenDespues ?? FEN_INICIAL,
     orientacion: color,
-    flechas,
-    resaltadas: {},
-    leyendas,
-    insignia: { texto: ap.eco, tono: 'neutro' },
+    fens,
+    jugadas,
+    anotaciones,
+    hitos: [...anotaciones.keys()].sort((a, b) => a - b),
+    resumen: construirResumen(informe),
+    cierre: construirCierre(informe, momentosClave(mias).length),
   };
 }
 
-/** Un momento clave: la posición antes de mover, con las dos opciones dibujadas. */
-function pasoJugada(informe: InformePartida, j: JugadaAnalizada, n: number, total: number): Paso {
+/** Prioridad cuando dos anotaciones caen en la misma parada. */
+const PRIORIDAD: Record<Anotacion['clase'], number> = { clave: 0, apertura: 1, habito: 2, fase: 3 };
+
+/**
+ * Coloca una anotación en su parada.
+ *
+ * Cada anotación está anclada a una posición concreta: sus flechas y sus
+ * casillas marcadas solo significan algo en ese tablero. Por eso, si dos caen
+ * en la misma parada, no se desplaza ninguna (quedaría dibujada sobre una
+ * posición que ya no le corresponde): se queda la más importante.
+ */
+function colocar(mapa: Map<number, Anotacion>, parada: number, anotacion: Anotacion): void {
+  const previa = mapa.get(parada);
+  if (previa && PRIORIDAD[previa.clase] <= PRIORIDAD[anotacion.clase]) return;
+  mapa.set(parada, anotacion);
+}
+
+/** Casillas de la última jugada, para no perder de vista qué se acaba de mover. */
+export function resaltarUltima(jugada: JugadaAnalizada | undefined): Resaltadas {
+  if (!jugada) return {};
+  return {
+    [jugada.uci.slice(0, 2)]: { backgroundColor: ULTIMA },
+    [jugada.uci.slice(2, 4)]: { backgroundColor: ULTIMA },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Anotaciones                                                         */
+/* ------------------------------------------------------------------ */
+
+function anotacionClave(j: JugadaAnalizada): Anotacion {
   const flechas: Flecha[] = [
     { desde: j.uci.slice(0, 2), hasta: j.uci.slice(2, 4), color: COLOR_JUGADA },
   ];
-  const leyendas: Leyenda[] = [{ color: COLOR_JUGADA, texto: `lo que jugaste: ${j.san}` }];
+  const leyendas: Leyenda[] = [{ color: COLOR_JUGADA, texto: `vas a jugar ${j.san}` }];
 
   if (j.mejorJugadaUci && j.mejorJugadaSan) {
     flechas.push({
@@ -247,24 +191,24 @@ function pasoJugada(informe: InformePartida, j: JugadaAnalizada, n: number, tota
       hasta: j.mejorJugadaUci.slice(2, 4),
       color: COLOR_MEJOR,
     });
-    leyendas.push({ color: COLOR_MEJOR, texto: `lo mejor: ${j.mejorJugadaSan}` });
+    leyendas.push({ color: COLOR_MEJOR, texto: `lo mejor era ${j.mejorJugadaSan}` });
   }
 
   return {
-    id: `jugada-${j.ply}`,
-    tipo: 'jugada',
-    seccion: `Momento clave ${n} de ${total}`,
+    clase: 'clave',
+    seccion: 'Atención a esta jugada',
     titulo: `${j.numeroJugada}${j.color === 'w' ? '.' : '...'} ${j.san}`,
-    // La continuacion se pinta en su propio bloque, asi que la quitamos del
-    // parrafo para no decir dos veces lo mismo en una pantalla pequena.
-    texto: (j.comentario ?? 'Había una jugada mejor en esta posición.').replace(/\s*\(linea:[^)]*\)/, ''),
-    fen: j.fenAntes,
-    orientacion: j.color,
+    // La continuación se pinta en su propio bloque: fuera del párrafo para no
+    // repetir lo mismo dos veces en una pantalla pequeña.
+    texto: (j.comentario ?? 'Había una jugada mejor en esta posición.').replace(
+      /\s*\(linea:[^)]*\)/,
+      '',
+    ),
     flechas,
     resaltadas: {},
     leyendas,
     insignia: {
-      texto: j.calidad === 'grave' ? 'Error grave' : j.calidad === 'error' ? 'Error' : 'Imprecisión',
+      texto: ETIQUETA_CALIDAD[j.calidad],
       tono: j.calidad === 'grave' ? 'mal' : 'aviso',
     },
     evolucion: { antes: j.evalAntes, despues: j.evalDespues },
@@ -272,92 +216,72 @@ function pasoJugada(informe: InformePartida, j: JugadaAnalizada, n: number, tota
   };
 }
 
-function pasoCierre(informe: InformePartida, clave: JugadaAnalizada[]): Paso {
-  const resumen = informe.resumen[informe.colorJugador];
-  const ultima = informe.jugadas.at(-1);
+function anotacionApertura(
+  informe: InformePartida,
+): { parada: number; anotacion: Anotacion } | null {
+  const ap = informe.apertura;
+  if (!ap) return null;
 
-  const puntos = [
-    clave.length > 0
-      ? `Repasa las ${clave.length} ${clave.length === 1 ? 'posición marcada' : 'posiciones marcadas'} sin mirar la respuesta.`
-      : 'No tuviste fallos graves: sube la profundidad de análisis para afinar más.',
-    resumen.habitos.length > 0
-      ? 'Corrige primero el hábito que más se repite: es lo que más puntos te da.'
-      : 'Mantén el ritmo: desarrollo, enroque y centro.',
-    'Analiza otra partida para que el apartado Progreso empiece a detectar patrones.',
-  ];
+  const ultimaTeorica = informe.jugadas[ap.plyLibro - 1];
+  const primeraPropia = informe.jugadas[ap.plyLibro];
+  if (!ultimaTeorica) return null;
+
+  // La primera jugada fuera de libro puede ser del rival: atribuírsela al
+  // usuario sería falso y confunde sobre de quién es el turno.
+  const laSacoElUsuario = primeraPropia?.color === informe.colorJugador;
+  const jugadaTeorica = Math.ceil(ap.plyLibro / 2);
+
+  let texto: string;
+  if (!primeraPropia) {
+    texto = 'Toda la partida se mantuvo dentro de la teoría de esta apertura.';
+  } else if (laSacoElUsuario) {
+    texto = `Hasta aquí seguiste teoría conocida (jugada ${jugadaTeorica}). Lo siguiente, ${primeraPropia.san}, ya es decisión tuya: a partir de este punto no te ayuda la memoria, sino entender el plan.`;
+  } else {
+    texto = `Hasta aquí la partida seguía teoría conocida (jugada ${jugadaTeorica}). Quien se sale del libro es tu rival, con ${primeraPropia.san}: desde aquí jugáis los dos por vuestra cuenta.`;
+  }
+
+  const flechas: Flecha[] = primeraPropia
+    ? [
+        {
+          desde: primeraPropia.uci.slice(0, 2),
+          hasta: primeraPropia.uci.slice(2, 4),
+          color: COLOR_JUGADA,
+        },
+      ]
+    : [];
 
   return {
-    id: 'cierre',
-    tipo: 'cierre',
-    seccion: 'Para la próxima',
-    titulo: 'Qué llevarte de esta partida',
-    texto: puntos.join('\n'),
-    fen: ultima?.fenDespues ?? FEN_INICIAL,
-    orientacion: informe.colorJugador,
-    flechas: [],
-    resaltadas: {},
-    leyendas: [],
+    parada: ap.plyLibro,
+    anotacion: {
+      clase: 'apertura',
+      seccion: 'Fin de la teoría',
+      titulo: ap.nombre,
+      texto,
+      flechas,
+      resaltadas: {},
+      leyendas: primeraPropia
+        ? [
+            {
+              color: COLOR_JUGADA,
+              texto: laSacoElUsuario ? 'tu primera jugada propia' : 'tu rival sale del libro',
+            },
+          ]
+        : [],
+      insignia: { texto: ap.eco, tono: 'neutro' },
+    },
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Selección de contenido                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Los momentos que merecen una pantalla propia.
- *
- * Primero los errores de verdad. Si la partida fue limpia, caemos en las
- * imprecisiones más caras para que el recorrido nunca quede vacío.
- */
-function momentosClave(mias: JugadaAnalizada[]): JugadaAnalizada[] {
-  const graves = mias.filter((j) => j.calidad === 'grave' || j.calidad === 'error');
-  if (graves.length > 0) return graves.slice(0, 8);
-
-  return mias
-    .filter((j) => j.calidad === 'imprecision')
-    .sort((a, b) => b.perdidaWin - a.perdidaWin)
-    .slice(0, 3)
-    .sort((a, b) => a.ply - b.ply);
-}
-
-/** Consejos de la partida, cada uno con una posición que lo ilustra. */
-function consejosIlustrables(informe: InformePartida): Paso[] {
-  const color = informe.colorJugador;
-  const resumen = informe.resumen[color];
-  const mias = informe.jugadas.filter((j) => j.color === color);
-  const pasos: Paso[] = [];
-
-  for (const habito of resumen.habitos) {
-    const paso = pasoHabito(habito, informe, mias);
-    if (paso) pasos.push(paso);
-  }
-
-  // Los consejos que no son hábitos (fase floja, apertura) se muestran sobre la
-  // posición más representativa que tengamos a mano.
-  const sobrantes = informe.consejos.filter(
-    (c) => !c.titulo.includes('Dejas el rey') && !c.titulo.includes('Sacas la dama'),
-  );
-  const fase = sobrantes.find((c) => c.titulo.startsWith('Tu fase'));
-  if (fase) {
-    const paso = pasoFase(fase, informe, mias);
-    if (paso) pasos.push(paso);
-  }
-
-  return pasos;
-}
-
-function pasoHabito(
+function anotacionHabito(
   habito: EtiquetaHabito,
   informe: InformePartida,
   mias: JugadaAnalizada[],
-): Paso | null {
+): { parada: number; anotacion: Anotacion } | null {
   const color = informe.colorJugador;
   const base = {
-    tipo: 'consejo' as const,
+    clase: 'habito' as const,
     seccion: 'Hábito a corregir',
-    orientacion: color,
-    resaltadas: {},
+    resaltadas: {} as Resaltadas,
     leyendas: [] as Leyenda[],
     flechas: [] as Flecha[],
     insignia: { texto: 'Se repite', tono: 'aviso' as Tono },
@@ -369,16 +293,14 @@ function pasoHabito(
       const ultima = [...mias].reverse().find((j) => piezaEn(j.fenDespues, casillaRey) === 'k');
       if (!ultima) return null;
       return {
-        ...base,
-        id: 'habito-sin-enrocar',
-        titulo: 'Tu rey se quedó en el centro',
-        texto:
-          'En la jugada ' +
-          ultima.numeroJugada +
-          ' tu rey seguía en su casilla inicial. Un rey sin enrocar es el origen de casi todos los ataques que se reciben: enroca dentro de las 10 primeras jugadas salvo que tengas un motivo concreto.',
-        fen: ultima.fenDespues,
-        resaltadas: { [casillaRey]: { backgroundColor: PELIGRO } },
-        leyendas: [{ color: PELIGRO, texto: 'tu rey, todavía en el centro' }],
+        parada: ultima.ply,
+        anotacion: {
+          ...base,
+          titulo: 'Tu rey sigue en el centro',
+          texto: `Vamos por la jugada ${ultima.numeroJugada} y tu rey no se ha movido de su casilla. Un rey sin enrocar es el origen de casi todos los ataques que se reciben: enroca dentro de las 10 primeras jugadas salvo que tengas un motivo concreto.`,
+          resaltadas: { [casillaRey]: { backgroundColor: PELIGRO } },
+          leyendas: [{ color: PELIGRO, texto: 'tu rey, todavía en el centro' }],
+        },
       };
     }
 
@@ -386,16 +308,14 @@ function pasoHabito(
       const salida = mias.slice(0, 4).find((j) => piezaEn(j.fenAntes, j.uci.slice(0, 2)) === 'q');
       if (!salida) return null;
       return {
-        ...base,
-        id: 'habito-dama',
-        titulo: 'Sacaste la dama demasiado pronto',
-        texto: `${salida.numeroJugada}${salida.color === 'w' ? '.' : '...'} ${salida.san} saca la pieza más valiosa antes que las demás. El rival gana tiempo atacándola mientras desarrolla. Primero caballos y alfiles, después la dama.`,
-        fen: salida.fenDespues,
-        flechas: [
-          { desde: salida.uci.slice(0, 2), hasta: salida.uci.slice(2, 4), color: COLOR_JUGADA },
-        ],
-        resaltadas: { [salida.uci.slice(2, 4)]: { backgroundColor: PELIGRO } },
-        leyendas: [{ color: COLOR_JUGADA, texto: 'la salida temprana de tu dama' }],
+        parada: salida.ply,
+        anotacion: {
+          ...base,
+          titulo: 'Sacaste la dama demasiado pronto',
+          texto: `${salida.numeroJugada}${salida.color === 'w' ? '.' : '...'} ${salida.san} pone en juego la pieza más valiosa antes que las demás. El rival gana tiempo atacándola mientras desarrolla. Primero caballos y alfiles, después la dama.`,
+          resaltadas: { [salida.uci.slice(2, 4)]: { backgroundColor: PELIGRO } },
+          leyendas: [{ color: PELIGRO, texto: 'tu dama, expuesta desde ya' }],
+        },
       };
     }
 
@@ -403,23 +323,20 @@ function pasoHabito(
       const repetida = piezaRepetida(mias.slice(0, 10));
       if (!repetida) return null;
       return {
-        ...base,
-        id: 'habito-repetida',
-        titulo: 'Moviste la misma pieza una y otra vez',
-        texto: `Esta pieza se movió ${repetida.veces} veces en la apertura mientras el resto de tu ejército seguía en casa. Cada jugada repetida es un tiempo regalado: saca una pieza nueva mientras te queden.`,
-        fen: repetida.jugada.fenDespues,
-        flechas: [
-          {
-            desde: repetida.jugada.uci.slice(0, 2),
-            hasta: repetida.jugada.uci.slice(2, 4),
-            color: COLOR_JUGADA,
+        parada: repetida.jugada.ply,
+        anotacion: {
+          ...base,
+          titulo: 'Vuelves a mover la misma pieza',
+          texto: `Esta pieza ya va por su movimiento número ${repetida.veces} y el resto de tu ejército sigue en casa. Cada jugada repetida en la apertura es un tiempo regalado: saca una pieza nueva mientras te queden.`,
+          resaltadas: {
+            [repetida.jugada.uci.slice(2, 4)]: { backgroundColor: PELIGRO },
+            ...sinDesarrollar(repetida.jugada.fenDespues, color),
           },
-        ],
-        resaltadas: sinDesarrollar(repetida.jugada.fenDespues, color),
-        leyendas: [
-          { color: COLOR_JUGADA, texto: 'la pieza que repetiste' },
-          { color: AVISO, texto: 'piezas tuyas todavía sin salir' },
-        ],
+          leyendas: [
+            { color: PELIGRO, texto: 'la pieza que repites' },
+            { color: AVISO, texto: 'piezas tuyas todavía sin salir' },
+          ],
+        },
       };
     }
 
@@ -427,14 +344,16 @@ function pasoHabito(
       const decima = mias[Math.min(9, mias.length - 1)];
       if (!decima) return null;
       const dormidas = sinDesarrollar(decima.fenDespues, color);
+      if (Object.keys(dormidas).length === 0) return null;
       return {
-        ...base,
-        id: 'habito-desarrollo',
-        titulo: 'Tardas en sacar las piezas',
-        texto: `En la jugada ${decima.numeroJugada} todavía te quedaban piezas en su casilla de origen. La apertura consiste en poner en juego caballos y alfiles y enrocar: a las 10 jugadas deberías tenerlo casi todo fuera.`,
-        fen: decima.fenDespues,
-        resaltadas: dormidas,
-        leyendas: [{ color: AVISO, texto: 'piezas que siguen sin desarrollar' }],
+        parada: decima.ply,
+        anotacion: {
+          ...base,
+          titulo: 'Te faltan piezas por sacar',
+          texto: `Jugada ${decima.numeroJugada} y todavía tienes piezas en su casilla de origen. La apertura consiste en poner en juego caballos y alfiles y enrocar: a estas alturas deberías tenerlo casi todo fuera.`,
+          resaltadas: dormidas,
+          leyendas: [{ color: AVISO, texto: 'piezas que siguen sin desarrollar' }],
+        },
       };
     }
 
@@ -447,15 +366,14 @@ function pasoHabito(
         .at(-1);
       if (!avance) return null;
       return {
-        ...base,
-        id: 'habito-peones',
-        titulo: 'Debilitaste los peones de tu rey',
-        texto: `Mover los peones f, g y h delante del rey abre vías de ataque que ya no se cierran. ${avance.numeroJugada}${avance.color === 'w' ? '.' : '...'} ${avance.san} es uno de esos avances: hazlos solo cuando ganes algo concreto a cambio.`,
-        fen: avance.fenDespues,
-        flechas: [
-          { desde: avance.uci.slice(0, 2), hasta: avance.uci.slice(2, 4), color: COLOR_JUGADA },
-        ],
-        leyendas: [{ color: COLOR_JUGADA, texto: 'el avance que debilita' }],
+        parada: avance.ply,
+        anotacion: {
+          ...base,
+          titulo: 'Estás debilitando los peones de tu rey',
+          texto: `Mover los peones f, g y h delante del rey abre vías de ataque que ya no se cierran. ${avance.numeroJugada}${avance.color === 'w' ? '.' : '...'} ${avance.san} es uno de esos avances: hazlos solo cuando ganes algo concreto a cambio.`,
+          resaltadas: { [avance.uci.slice(2, 4)]: { backgroundColor: PELIGRO } },
+          leyendas: [{ color: PELIGRO, texto: 'el avance que debilita' }],
+        },
       };
     }
 
@@ -464,52 +382,84 @@ function pasoHabito(
   }
 }
 
-function pasoFase(consejo: Consejo, informe: InformePartida, mias: JugadaAnalizada[]): Paso | null {
-  const faseTexto = consejo.titulo.toLowerCase();
-  const fase = faseTexto.includes('apertura')
-    ? 'apertura'
-    : faseTexto.includes('final')
-      ? 'final'
-      : 'medio';
+/* ------------------------------------------------------------------ */
+/* Portada y cierre                                                    */
+/* ------------------------------------------------------------------ */
 
-  // Enseñamos la jugada más cara de esa fase: es lo que la hace floja.
-  const peor = mias
-    .filter((j) => j.fase === fase)
-    .sort((a, b) => b.perdidaCp - a.perdidaCp)[0];
-  if (!peor) return null;
+function construirResumen(informe: InformePartida): Recorrido['resumen'] {
+  const color = informe.colorJugador;
+  const resumen = informe.resumen[color];
+  const yo = color === 'w' ? informe.blancas : informe.negras;
+  const rival = color === 'w' ? informe.negras : informe.blancas;
+  const fallos = resumen.conteo.grave + resumen.conteo.error;
 
   return {
-    id: `fase-${fase}`,
-    tipo: 'consejo',
-    seccion: 'Dónde pierdes más',
-    titulo: consejo.titulo,
-    texto: `${consejo.detalle} Esta es la posición que más te costó en esa fase.`,
-    fen: peor.fenAntes,
-    orientacion: informe.colorJugador,
-    flechas: [
-      { desde: peor.uci.slice(0, 2), hasta: peor.uci.slice(2, 4), color: COLOR_JUGADA },
-      ...(peor.mejorJugadaUci
-        ? [
-            {
-              desde: peor.mejorJugadaUci.slice(0, 2),
-              hasta: peor.mejorJugadaUci.slice(2, 4),
-              color: COLOR_MEJOR,
-            },
-          ]
-        : []),
-    ],
-    resaltadas: {},
-    leyendas: [
-      { color: COLOR_JUGADA, texto: `jugaste ${peor.san}` },
-      ...(peor.mejorJugadaSan ? [{ color: COLOR_MEJOR, texto: `mejor ${peor.mejorJugadaSan}` }] : []),
-    ],
-    insignia: { texto: 'Tu punto flojo', tono: 'aviso' },
+    titulo: `${yo} contra ${rival}`,
+    texto:
+      (fallos === 0
+        ? 'Jugaste sin errores serios.'
+        : fallos === 1
+          ? 'Cometiste 1 fallo importante.'
+          : `Cometiste ${fallos} fallos importantes.`) +
+      ' Vamos a recorrer la partida jugada a jugada; te aviso cuando lleguemos a un momento que merece la pena mirar.',
+    insignia: {
+      texto: `${resumen.precision}% de precisión`,
+      tono: resumen.precision >= 90 ? 'bien' : resumen.precision >= 75 ? 'aviso' : 'mal',
+    },
+    desglose: ORDEN_CALIDAD.map((calidad) => ({ calidad, veces: resumen.conteo[calidad] })).filter(
+      (d) => d.veces > 0,
+    ),
   };
 }
 
+function construirCierre(informe: InformePartida, momentos: number): Recorrido['cierre'] {
+  const resumen = informe.resumen[informe.colorJugador];
+  const puntos: string[] = [];
+
+  puntos.push(
+    momentos > 0
+      ? `Vuelve a las ${momentos} ${momentos === 1 ? 'posición marcada' : 'posiciones marcadas'} e intenta encontrar la jugada sin mirar la respuesta.`
+      : 'No tuviste fallos graves: sube la profundidad de análisis para afinar más.',
+  );
+
+  // Los consejos que hablan de la partida entera, y no de una posición, no
+  // caben en la línea temporal: su sitio es el cierre.
+  const fase = informe.consejos.find((c) => c.titulo.startsWith('Tu fase'));
+  if (fase) puntos.push(`${fase.titulo}. ${fase.detalle}`);
+
+  const material = informe.consejos.find((c) => c.titulo.includes('capturas ganadoras'));
+  if (material) puntos.push(material.detalle);
+
+  puntos.push(
+    resumen.habitos.length > 0
+      ? 'Corrige primero el hábito que más se repite: es lo que más puntos te da.'
+      : 'Mantén el ritmo: desarrollo, enroque y centro.',
+  );
+  puntos.push('Analiza otra partida para que el apartado Progreso empiece a detectar patrones.');
+
+  return { titulo: 'Qué llevarte de esta partida', puntos };
+}
+
 /* ------------------------------------------------------------------ */
-/* Utilidades de tablero                                               */
+/* Selección y utilidades                                              */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Las jugadas que merecen que el recorrido se detenga.
+ *
+ * Primero los errores de verdad; si la partida fue limpia, las imprecisiones
+ * más caras, para que el repaso nunca quede sin nada que enseñar.
+ */
+function momentosClave(mias: JugadaAnalizada[]): JugadaAnalizada[] {
+  const graves = mias.filter((j) => j.calidad === 'grave' || j.calidad === 'error');
+  if (graves.length > 0) return graves.slice(0, 8);
+
+  return mias
+    .filter((j) => j.calidad === 'imprecision')
+    .sort((a, b) => b.perdidaWin - a.perdidaWin)
+    .slice(0, 3)
+    .sort((a, b) => a.ply - b.ply);
+}
 
 function piezaEn(fen: string, casilla: string): string | null {
   try {
@@ -520,9 +470,9 @@ function piezaEn(fen: string, casilla: string): string | null {
 }
 
 /** Caballos y alfiles que siguen en su casilla de origen. */
-function sinDesarrollar(fen: string, color: Color): Record<string, { backgroundColor: string }> {
+function sinDesarrollar(fen: string, color: Color): Resaltadas {
   const origen = color === 'w' ? ['b1', 'g1', 'c1', 'f1'] : ['b8', 'g8', 'c8', 'f8'];
-  const salida: Record<string, { backgroundColor: string }> = {};
+  const salida: Resaltadas = {};
   try {
     const chess = new Chess(fen);
     for (const casilla of origen) {
@@ -537,14 +487,7 @@ function sinDesarrollar(fen: string, color: Color): Record<string, { backgroundC
   return salida;
 }
 
-function casillasCentrales(): Record<string, { backgroundColor: string }> {
-  return Object.fromEntries(['d4', 'e4', 'd5', 'e5'].map((c) => [c, { backgroundColor: AVISO }]));
-}
-
-/**
- * Encuentra la pieza que más veces se movió en la apertura, siguiendo su rastro
- * de casilla en casilla.
- */
+/** La pieza que más se movió en la apertura, siguiendo su rastro de casilla en casilla. */
 function piezaRepetida(
   jugadas: JugadaAnalizada[],
 ): { jugada: JugadaAnalizada; veces: number } | null {
@@ -558,9 +501,7 @@ function piezaRepetida(
     const id = posiciones.get(desde) ?? `p${siguienteId++}`;
     posiciones.delete(desde);
     posiciones.set(hasta, id);
-
-    const previo = conteo.get(id);
-    conteo.set(id, { veces: (previo?.veces ?? 0) + 1, ultima: j });
+    conteo.set(id, { veces: (conteo.get(id)?.veces ?? 0) + 1, ultima: j });
   }
 
   const peor = [...conteo.values()].sort((a, b) => b.veces - a.veces)[0];

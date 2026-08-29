@@ -9,14 +9,20 @@ comentario sale de una evaluación concreta del motor.
 ## Qué hace
 
 **Repaso guiado (lo que ves al analizar)**
-- Una idea por pantalla, sin scroll: tablero grande arriba, explicación corta
-  debajo y un botón para pasar a la siguiente. Está pensado para el móvil.
-- Cada consejo lleva siempre una posición dibujada: la apertura se explica sobre
-  el tablero al que llevó la teoría, y cada hábito (rey sin enrocar, dama
-  temprana, piezas dormidas) se ilustra con la posición y las casillas marcadas.
-- En los momentos clave se dibujan las dos opciones a la vez: en rojo lo que
-  jugaste, en verde lo que recomendaba el motor.
-- El informe completo jugada a jugada sigue disponible desde el último paso.
+- La partida se recorre como una única línea temporal: cada pulsación adelanta
+  **una jugada**, con animación, y la última jugada queda resaltada. Nunca salta
+  varias jugadas de golpe, para no perder el hilo de cómo se llegó a la posición.
+- Los consejos no viven aparte: están colgados de la parada exacta en la que la
+  partida los demuestra, y la barra de progreso marca dónde están.
+- Antes de una jugada clave se dibujan las dos opciones a la vez: en rojo lo que
+  jugaste, en verde lo que recomendaba el motor, con la oscilación de la
+  evaluación. Al pulsar, la jugada se reproduce.
+- Cada hábito (rey sin enrocar, dama temprana, piezas dormidas, peones del rey)
+  se ilustra sobre la posición que lo demuestra, con las casillas marcadas.
+- Una pantalla por idea, sin scroll vertical: el tablero se dimensiona según el
+  hueco que deja el texto. Se avanza también deslizando el dedo o con el teclado.
+- Hay un atajo para saltar al siguiente aviso, y el informe completo jugada a
+  jugada sigue disponible al final.
 
 **Por partida**
 - Evalúa las N+1 posiciones de la partida y calcula, para cada jugada, la pérdida

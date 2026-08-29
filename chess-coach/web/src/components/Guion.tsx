@@ -1,8 +1,16 @@
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { InformePartida } from '@shared';
-import { COLOR_CALIDAD, construirGuion, nombreCalidad, type Paso } from '../lib/guion';
+import type { Calidad, Evaluacion, InformePartida, JugadaAnalizada } from '@shared';
+import {
+  COLOR_CALIDAD,
+  ETIQUETA_CALIDAD,
+  construirRecorrido,
+  nombreCalidad,
+  resaltarUltima,
+  type Anotacion,
+  type Recorrido,
+} from '../lib/guion';
 import { TableroPaso } from './TableroPaso';
-import { formatearEval, barraEval } from '../lib/formato';
+import { barraEval, formatearEval } from '../lib/formato';
 
 interface Props {
   informe: InformePartida;
@@ -10,7 +18,7 @@ interface Props {
   onVerDetalle: () => void;
 }
 
-/** Separacion entre tablero y texto, en pixeles (debe coincidir con el CSS). */
+/** Separación entre tablero y texto, en píxeles (debe coincidir con el CSS). */
 const HUECO = 14;
 const LADO_MINIMO = 180;
 
@@ -18,10 +26,10 @@ const LADO_MINIMO = 180;
  * Calcula el lado del tablero a partir del hueco que deja el texto.
  *
  * Medir solo el contenedor del tablero no vale: como crece para ocupar el
- * espacio libre, el tablero acabaria centrado dentro de un hueco enorme y
- * quedaria un vacio entre la cabecera y las piezas. Midiendo el cuerpo entero y
+ * espacio libre, el tablero acabaría centrado dentro de un hueco enorme y
+ * quedaría un vacío entre la cabecera y las piezas. Midiendo el cuerpo entero y
  * restando lo que ocupa el texto, el tablero se lleva todo lo que sobra, que es
- * lo que interesa en un movil: piezas lo mas grandes posible.
+ * lo que interesa en un móvil: piezas lo más grandes posible.
  */
 function useLadoTablero(
   cuerpo: React.RefObject<HTMLDivElement>,
@@ -52,22 +60,30 @@ function useLadoTablero(
 }
 
 /**
- * Recorrido guiado: una pantalla completa por idea, con el tablero delante y
- * un único botón para avanzar. Está pensado para el móvil, donde una página
- * larga con todo el informe obliga a desplazarse sin saber qué mirar.
+ * Repaso guiado de la partida.
+ *
+ * El recorrido es una sola línea temporal: cada pulsación adelanta una jugada,
+ * ni una más. Saltar de un consejo al siguiente movía el tablero varias jugadas
+ * de golpe y se perdía el hilo de cómo se había llegado hasta ahí.
  */
 export function Guion({ informe, onSalir, onVerDetalle }: Props) {
-  const pasos = useMemo(() => construirGuion(informe), [informe]);
-  const [i, setI] = useState(0);
-  const paso = pasos[i] ?? pasos[0]!;
-  const ultimo = i === pasos.length - 1;
+  const recorrido = useMemo(() => construirRecorrido(informe), [informe]);
+  const ultimaParada = recorrido.fens.length - 1;
 
-  const cuerpo = useRef<HTMLDivElement>(null);
-  const texto = useRef<HTMLDivElement>(null);
-  const lado = useLadoTablero(cuerpo, texto, paso.id);
+  // -1 es la portada y ultimaParada + 1 el cierre; en medio, una parada por jugada.
+  const [parada, setParada] = useState(-1);
 
-  const avanzar = () => setI((n) => Math.min(n + 1, pasos.length - 1));
-  const retroceder = () => setI((n) => Math.max(n - 1, 0));
+  const enPortada = parada === -1;
+  const enCierre = parada > ultimaParada;
+  const indiceTablero = Math.min(Math.max(parada, 0), ultimaParada);
+
+  const anotacion = enPortada || enCierre ? undefined : recorrido.anotaciones.get(parada);
+  const ultimaJugada = indiceTablero > 0 ? recorrido.jugadas[indiceTablero - 1] : undefined;
+  const proximaJugada = recorrido.jugadas[indiceTablero];
+
+  const avanzar = () => setParada((n) => Math.min(n + 1, ultimaParada + 1));
+  const retroceder = () => setParada((n) => Math.max(n - 1, -1));
+  const siguienteHito = recorrido.hitos.find((h) => h > parada);
 
   useEffect(() => {
     const alPulsar = (e: KeyboardEvent) => {
@@ -79,7 +95,7 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
     return () => window.removeEventListener('keydown', alPulsar);
   });
 
-  // Deslizar con el dedo, que en el móvil es más natural que buscar el botón.
+  // Deslizar con el dedo, más natural en el móvil que buscar el botón.
   const inicioX = useRef<number | null>(null);
   const alEmpezarToque = (e: React.TouchEvent) => {
     inicioX.current = e.touches[0]?.clientX ?? null;
@@ -88,12 +104,17 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
     const inicio = inicioX.current;
     const fin = e.changedTouches[0]?.clientX;
     inicioX.current = null;
-    if (inicio === null || fin === undefined) return;
-    const recorrido = fin - inicio;
-    if (Math.abs(recorrido) < 60) return;
-    if (recorrido < 0) avanzar();
+    if (inicio === null || fin === undefined || Math.abs(fin - inicio) < 60) return;
+    if (fin < inicio) avanzar();
     else retroceder();
   };
+
+  const cuerpo = useRef<HTMLDivElement>(null);
+  const texto = useRef<HTMLDivElement>(null);
+  const lado = useLadoTablero(cuerpo, texto, parada);
+
+  const resaltadas = { ...resaltarUltima(ultimaJugada), ...(anotacion?.resaltadas ?? {}) };
+  const progreso = ((parada + 1) / (ultimaParada + 2)) * 100;
 
   return (
     <div className="guion" onTouchStart={alEmpezarToque} onTouchEnd={alTerminarToque}>
@@ -101,96 +122,227 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
         <button type="button" className="icono" onClick={onSalir} aria-label="Salir del repaso">
           ✕
         </button>
-        <div className="guion-progreso" role="progressbar" aria-valuenow={i + 1} aria-valuemin={1} aria-valuemax={pasos.length}>
-          <div className="guion-progreso-relleno" style={{ width: `${((i + 1) / pasos.length) * 100}%` }} />
+        <div
+          className="guion-progreso"
+          role="progressbar"
+          aria-valuenow={parada + 1}
+          aria-valuemin={0}
+          aria-valuemax={ultimaParada + 1}
+        >
+          <div className="guion-progreso-relleno" style={{ width: `${progreso}%` }} />
+          {/* Marcas de los momentos anotados: se ve de un vistazo qué queda por delante. */}
+          {recorrido.hitos.map((h) => (
+            <span key={h} className="guion-hito" style={{ left: `${((h + 1) / (ultimaParada + 2)) * 100}%` }} />
+          ))}
         </div>
         <span className="guion-cuenta">
-          {i + 1}/{pasos.length}
+          {enPortada ? 'inicio' : enCierre ? 'fin' : `${indiceTablero}/${ultimaParada}`}
         </span>
       </header>
 
-      <p className="guion-seccion">{paso.seccion}</p>
+      <p className="guion-seccion">
+        {enPortada
+          ? 'Tu partida'
+          : enCierre
+            ? 'Para la próxima'
+            : (anotacion?.seccion ?? cabeceraJugada(ultimaJugada))}
+      </p>
 
       <div className="guion-cuerpo" ref={cuerpo}>
-        <TableroPaso paso={paso} lado={lado} />
-        <Explicacion paso={paso} ref={texto} />
+        <TableroPaso
+          fen={recorrido.fens[indiceTablero]!}
+          orientacion={recorrido.orientacion}
+          flechas={anotacion?.flechas ?? []}
+          resaltadas={resaltadas}
+          lado={lado}
+        />
+
+        <Panel
+          ref={texto}
+          recorrido={recorrido}
+          anotacion={anotacion}
+          enPortada={enPortada}
+          enCierre={enCierre}
+          ultimaJugada={ultimaJugada}
+          proximaJugada={proximaJugada}
+        />
       </div>
 
       <nav className="guion-nav">
-        <button type="button" className="secundario" onClick={retroceder} disabled={i === 0}>
+        <button type="button" className="secundario" onClick={retroceder} disabled={enPortada}>
           Atrás
         </button>
-        {ultimo ? (
+
+        {enCierre ? (
           <button type="button" className="primario" onClick={onVerDetalle}>
             Ver la partida entera
           </button>
         ) : (
           <button type="button" className="primario" onClick={avanzar}>
-            Siguiente
+            {enPortada ? 'Empezar' : anotacion ? 'Entendido, sigue' : 'Siguiente jugada'}
           </button>
         )}
       </nav>
+
+      {siguienteHito !== undefined && !enCierre && (
+        <button type="button" className="guion-salto" onClick={() => setParada(siguienteHito)}>
+          Saltar al siguiente aviso ⏭
+        </button>
+      )}
     </div>
   );
 }
 
-/** Bloque de texto de cada paso: corto, y siempre debajo del tablero. */
-const Explicacion = forwardRef<HTMLDivElement, { paso: Paso }>(function Explicacion({ paso }, ref) {
-  return (
-    <div className="guion-texto" ref={ref}>
-      <div className="guion-titulo-fila">
-        <h2>{paso.titulo}</h2>
-        {paso.insignia && <span className={`chip tono-${paso.insignia.tono}`}>{paso.insignia.texto}</span>}
-      </div>
+/** Rótulo de la jugada que se acaba de ver, para no perder la cuenta. */
+function cabeceraJugada(ultima: JugadaAnalizada | undefined): string {
+  if (!ultima) return 'Posición inicial';
+  return `Jugada ${ultima.numeroJugada}${ultima.color === 'w' ? '' : '…'}`;
+}
 
-      {paso.leyendas.length > 0 && (
-        <ul className="leyendas">
-          {paso.leyendas.map((l) => (
-            <li key={l.texto}>
-              <span className="punto" style={{ backgroundColor: l.color }} />
-              {l.texto}
-            </li>
-          ))}
-        </ul>
-      )}
+interface PanelProps {
+  recorrido: Recorrido;
+  anotacion: Anotacion | undefined;
+  enPortada: boolean;
+  enCierre: boolean;
+  ultimaJugada: JugadaAnalizada | undefined;
+  proximaJugada: JugadaAnalizada | undefined;
+}
 
-      {paso.desglose && <Desglose desglose={paso.desglose} />}
-
-      {paso.evolucion && (
-        <div className="oscilacion">
-          <BarraHorizontal ev={paso.evolucion.antes} etiqueta="antes" />
-          <span className="flecha-eval">→</span>
-          <BarraHorizontal ev={paso.evolucion.despues} etiqueta="después" />
+const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
+  { recorrido, anotacion, enPortada, enCierre, ultimaJugada, proximaJugada },
+  ref,
+) {
+  if (enPortada) {
+    const { titulo, texto, insignia, desglose } = recorrido.resumen;
+    return (
+      <div className="guion-texto" ref={ref}>
+        <div className="guion-titulo-fila">
+          <h2>{titulo}</h2>
+          <span className={`chip tono-${insignia.tono}`}>{insignia.texto}</span>
         </div>
-      )}
+        <Desglose desglose={desglose} />
+        <p>{texto}</p>
+      </div>
+    );
+  }
 
-      {paso.tipo === 'cierre' ? (
+  if (enCierre) {
+    return (
+      <div className="guion-texto" ref={ref}>
+        <div className="guion-titulo-fila">
+          <h2>{recorrido.cierre.titulo}</h2>
+        </div>
         <ul className="lista-cierre">
-          {paso.texto.split('\n').map((linea) => (
-            <li key={linea}>{linea}</li>
+          {recorrido.cierre.puntos.map((p) => (
+            <li key={p}>{p}</li>
           ))}
         </ul>
-      ) : (
-        <p>{paso.texto}</p>
-      )}
+      </div>
+    );
+  }
 
-      {paso.linea && paso.linea.length > 1 && (
-        <p className="guion-linea">
-          <span className="etiqueta">Seguiría</span>
-          <code>{paso.linea.join(' ')}</code>
-        </p>
-      )}
+  if (anotacion) {
+    return (
+      <div className="guion-texto" ref={ref}>
+        <div className="guion-titulo-fila">
+          <h2>{anotacion.titulo}</h2>
+          {anotacion.insignia && (
+            <span className={`chip tono-${anotacion.insignia.tono}`}>{anotacion.insignia.texto}</span>
+          )}
+        </div>
+        {anotacion.leyendas.length > 0 && <Leyendas leyendas={anotacion.leyendas} />}
+        {anotacion.evolucion && <Oscilacion evolucion={anotacion.evolucion} />}
+        <p>{anotacion.texto}</p>
+        {anotacion.linea && anotacion.linea.length > 1 && (
+          <p className="guion-linea">
+            <span className="etiqueta">Seguiría</span>
+            <code>{anotacion.linea.join(' ')}</code>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="guion-texto guion-texto-simple" ref={ref}>
+      <PasoNormal ultima={ultimaJugada} proxima={proximaJugada} />
     </div>
   );
 });
 
 /**
- * Reparto de tus jugadas por calidad, como una sola barra.
+ * Lo que se ve en una jugada sin nada que comentar.
  *
- * De un vistazo se ve cuanto de la partida jugaste bien, sin leer numeros:
- * es la respuesta grafica a "que tal lo hice".
+ * No es relleno: dice qué se acaba de jugar, si estuvo bien y a quién le toca,
+ * que es lo que hace falta para seguir la partida sin perderse.
  */
-function Desglose({ desglose }: { desglose: NonNullable<Paso['desglose']> }) {
+function PasoNormal({
+  ultima,
+  proxima,
+}: {
+  ultima: JugadaAnalizada | undefined;
+  proxima: JugadaAnalizada | undefined;
+}) {
+  if (!ultima) {
+    return (
+      <>
+        <h2>Empezamos</h2>
+        <p>Cada vez que pulses avanzamos una jugada. Te aviso cuando haya algo que mirar.</p>
+      </>
+    );
+  }
+
+  const turno = proxima
+    ? `Le toca a las ${proxima.color === 'w' ? 'blancas' : 'negras'}.`
+    : 'Fin de la partida.';
+
+  return (
+    <>
+      <div className="guion-titulo-fila">
+        <h2>
+          {ultima.numeroJugada}
+          {ultima.color === 'w' ? '.' : '…'} {ultima.san}
+        </h2>
+        <span className="chip" style={{ color: COLOR_CALIDAD[ultima.calidad] }}>
+          {ETIQUETA_CALIDAD[ultima.calidad]}
+        </span>
+      </div>
+      <div className="oscilacion">
+        <BarraHorizontal ev={ultima.evalDespues} etiqueta="ventaja" />
+      </div>
+      <p>{turno}</p>
+    </>
+  );
+}
+
+function Leyendas({ leyendas }: { leyendas: Anotacion['leyendas'] }) {
+  return (
+    <ul className="leyendas">
+      {leyendas.map((l) => (
+        <li key={l.texto}>
+          <span className="punto" style={{ backgroundColor: l.color }} />
+          {l.texto}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Oscilacion({ evolucion }: { evolucion: NonNullable<Anotacion['evolucion']> }) {
+  return (
+    <div className="oscilacion">
+      <BarraHorizontal ev={evolucion.antes} etiqueta="ahora" />
+      <span className="flecha-eval">→</span>
+      <BarraHorizontal ev={evolucion.despues} etiqueta="después" />
+    </div>
+  );
+}
+
+/**
+ * Reparto de tus jugadas por calidad, como una sola barra: de un vistazo se ve
+ * cuánto de la partida jugaste bien, sin leer números.
+ */
+function Desglose({ desglose }: { desglose: { calidad: Calidad; veces: number }[] }) {
   const total = desglose.reduce((suma, d) => suma + d.veces, 0);
   if (total === 0) return null;
 
@@ -218,13 +370,12 @@ function Desglose({ desglose }: { desglose: NonNullable<Paso['desglose']> }) {
 }
 
 /** Barra de ventaja: quién está mejor de un vistazo, sin leer números. */
-function BarraHorizontal({ ev, etiqueta }: { ev: import('@shared').Evaluacion; etiqueta: string }) {
-  const blancas = barraEval(ev) * 100;
+function BarraHorizontal({ ev, etiqueta }: { ev: Evaluacion; etiqueta: string }) {
   return (
     <div className="mini-eval">
       <span className="mini-eval-etiqueta">{etiqueta}</span>
       <div className="mini-eval-pista">
-        <div className="mini-eval-blancas" style={{ width: `${blancas}%` }} />
+        <div className="mini-eval-blancas" style={{ width: `${barraEval(ev) * 100}%` }} />
       </div>
       <span className="mini-eval-valor">{formatearEval(ev)}</span>
     </div>
