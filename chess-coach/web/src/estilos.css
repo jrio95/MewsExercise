@@ -313,6 +313,10 @@ footer p { margin: 0; color: var(--texto-2); font-size: 13px; }
   font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--texto-2);
 }
+/* Tus jugadas se distinguen de un vistazo de las del rival. */
+.guion-seccion.mia { color: var(--acento); }
+
+.guion-cabecera .girar { font-size: 17px; }
 
 /*
  * Tablero y texto van juntos en la fila flexible y se centran como un bloque.

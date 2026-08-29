@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Calidad, Evaluacion, InformePartida, JugadaAnalizada } from '@shared';
+import type { Calidad, Color, Evaluacion, InformePartida, JugadaAnalizada } from '@shared';
 import {
   COLOR_CALIDAD,
   ETIQUETA_CALIDAD,
@@ -67,7 +67,10 @@ function useLadoTablero(
  * de golpe y se perdía el hilo de cómo se había llegado hasta ahí.
  */
 export function Guion({ informe, onSalir, onVerDetalle }: Props) {
-  const recorrido = useMemo(() => construirRecorrido(informe), [informe]);
+  // El color se puede cambiar aquí: si el análisis dedujo mal de qué bando
+  // jugabas, verías la partida entera del revés y comentada al contrario.
+  const [color, setColor] = useState<Color>(informe.colorJugador);
+  const recorrido = useMemo(() => construirRecorrido(informe, color), [informe, color]);
   const ultimaParada = recorrido.fens.length - 1;
 
   // -1 es la portada y ultimaParada + 1 el cierre; en medio, una parada por jugada.
@@ -135,23 +138,32 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
             <span key={h} className="guion-hito" style={{ left: `${((h + 1) / (ultimaParada + 2)) * 100}%` }} />
           ))}
         </div>
+        <button
+          type="button"
+          className="icono girar"
+          onClick={() => setColor((c) => (c === 'w' ? 'b' : 'w'))}
+          title="Ver la partida desde el otro bando"
+          aria-label="Cambiar de bando"
+        >
+          ⇅
+        </button>
         <span className="guion-cuenta">
           {enPortada ? 'inicio' : enCierre ? 'fin' : `${indiceTablero}/${ultimaParada}`}
         </span>
       </header>
 
-      <p className="guion-seccion">
+      <p className={`guion-seccion ${esMia(ultimaJugada, color) ? 'mia' : ''}`}>
         {enPortada
           ? 'Tu partida'
           : enCierre
             ? 'Para la próxima'
-            : (anotacion?.seccion ?? cabeceraJugada(ultimaJugada))}
+            : (anotacion?.seccion ?? cabeceraJugada(ultimaJugada, color))}
       </p>
 
       <div className="guion-cuerpo" ref={cuerpo}>
         <TableroPaso
           fen={recorrido.fens[indiceTablero]!}
-          orientacion={recorrido.orientacion}
+          orientacion={color}
           flechas={anotacion?.flechas ?? []}
           resaltadas={resaltadas}
           lado={lado}
@@ -165,6 +177,7 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
           enCierre={enCierre}
           ultimaJugada={ultimaJugada}
           proximaJugada={proximaJugada}
+          color={color}
         />
       </div>
 
@@ -193,10 +206,14 @@ export function Guion({ informe, onSalir, onVerDetalle }: Props) {
   );
 }
 
-/** Rótulo de la jugada que se acaba de ver, para no perder la cuenta. */
-function cabeceraJugada(ultima: JugadaAnalizada | undefined): string {
+function esMia(jugada: JugadaAnalizada | undefined, color: Color): boolean {
+  return jugada?.color === color;
+}
+
+/** Rótulo de la jugada que se acaba de ver: lo primero es de quién era. */
+function cabeceraJugada(ultima: JugadaAnalizada | undefined, color: Color): string {
   if (!ultima) return 'Posición inicial';
-  return `Jugada ${ultima.numeroJugada}${ultima.color === 'w' ? '' : '…'}`;
+  return esMia(ultima, color) ? 'Tu jugada' : 'Juega tu rival';
 }
 
 interface PanelProps {
@@ -206,10 +223,11 @@ interface PanelProps {
   enCierre: boolean;
   ultimaJugada: JugadaAnalizada | undefined;
   proximaJugada: JugadaAnalizada | undefined;
+  color: Color;
 }
 
 const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
-  { recorrido, anotacion, enPortada, enCierre, ultimaJugada, proximaJugada },
+  { recorrido, anotacion, enPortada, enCierre, ultimaJugada, proximaJugada, color },
   ref,
 ) {
   if (enPortada) {
@@ -265,7 +283,7 @@ const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
 
   return (
     <div className="guion-texto guion-texto-simple" ref={ref}>
-      <PasoNormal ultima={ultimaJugada} proxima={proximaJugada} />
+      <PasoNormal ultima={ultimaJugada} proxima={proximaJugada} color={color} />
     </div>
   );
 });
@@ -279,38 +297,58 @@ const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
 function PasoNormal({
   ultima,
   proxima,
+  color,
 }: {
   ultima: JugadaAnalizada | undefined;
   proxima: JugadaAnalizada | undefined;
+  color: Color;
 }) {
   if (!ultima) {
     return (
       <>
         <h2>Empezamos</h2>
-        <p>Cada vez que pulses avanzamos una jugada. Te aviso cuando haya algo que mirar.</p>
+        <p>
+          Cada vez que pulses avanzamos una jugada. El tablero está puesto desde tu lado y te aviso
+          cuando en una de tus jugadas haya algo que mirar.
+        </p>
       </>
     );
   }
 
-  const turno = proxima
-    ? `Le toca a las ${proxima.color === 'w' ? 'blancas' : 'negras'}.`
-    : 'Fin de la partida.';
+  const mia = ultima.color === color;
+  const notacion = `${ultima.numeroJugada}${ultima.color === 'w' ? '.' : '…'} ${ultima.san}`;
+  const meToca = proxima?.color === color;
+
+  // Cuando el rival falla, se avisa sin dar la solución: lo interesante es que
+  // el usuario mire la posición antes de pasar de pantalla.
+  const rivalFalla = !mia && (ultima.calidad === 'grave' || ultima.calidad === 'error');
 
   return (
     <>
       <div className="guion-titulo-fila">
-        <h2>
-          {ultima.numeroJugada}
-          {ultima.color === 'w' ? '.' : '…'} {ultima.san}
-        </h2>
-        <span className="chip" style={{ color: COLOR_CALIDAD[ultima.calidad] }}>
-          {ETIQUETA_CALIDAD[ultima.calidad]}
-        </span>
+        <h2>{mia ? notacion : `Tu rival juega ${notacion}`}</h2>
+        {mia ? (
+          <span className="chip" style={{ color: COLOR_CALIDAD[ultima.calidad] }}>
+            {ETIQUETA_CALIDAD[ultima.calidad]}
+          </span>
+        ) : (
+          rivalFalla && <span className="chip tono-bien">Tu rival ha fallado</span>
+        )}
       </div>
+
       <div className="oscilacion">
         <BarraHorizontal ev={ultima.evalDespues} etiqueta="ventaja" />
       </div>
-      <p>{turno}</p>
+
+      <p>
+        {rivalFalla
+          ? 'Acaba de cometer un error. Antes de seguir, mira la posición: ¿ves cómo aprovecharlo?'
+          : meToca
+            ? 'Te toca mover.'
+            : proxima
+              ? 'Responde tu rival.'
+              : 'Fin de la partida.'}
+      </p>
     </>
   );
 }

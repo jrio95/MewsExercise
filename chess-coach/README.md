@@ -12,6 +12,14 @@ comentario sale de una evaluación concreta del motor.
 - La partida se recorre como una única línea temporal: cada pulsación adelanta
   **una jugada**, con animación, y la última jugada queda resaltada. Nunca salta
   varias jugadas de golpe, para no perder el hilo de cómo se llegó a la posición.
+- Todo gira en torno a **tus** jugadas: el tablero se orienta desde tu lado, cada
+  parada dice si la jugada es tuya o del rival, y se comenta cualquier jugada
+  tuya en la que hubiera algo mejor de verdad (no solo las peores de la partida).
+  Cuando el rival falla se te avisa sin dar la solución, para que la busques.
+- También se reconoce lo que haces bien, pero solo con mérito comprobable: haber
+  encontrado la jugada del motor justo después de un fallo del rival.
+- Si el análisis dedujo mal de qué bando jugabas, el botón ⇅ cambia de bando y
+  recalcula el repaso entero desde el otro lado.
 - Los consejos no viven aparte: están colgados de la parada exacta en la que la
   partida los demuestra, y la barra de progreso marca dónde están.
 - Antes de una jugada clave se dibujan las dos opciones a la vez: en rojo lo que

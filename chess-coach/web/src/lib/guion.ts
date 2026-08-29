@@ -36,7 +36,7 @@ export type Resaltadas = Record<string, { backgroundColor: string }>;
  * se ven las piezas, el consejo no se entiende.
  */
 export interface Anotacion {
-  clase: 'clave' | 'habito' | 'apertura' | 'fase';
+  clase: 'clave' | 'acierto' | 'habito' | 'apertura' | 'fase';
   seccion: string;
   titulo: string;
   texto: string;
@@ -115,26 +115,28 @@ export const ETIQUETA_CALIDAD: Record<Calidad, string> = {
  * consejos no viven aparte, sino colgados de la parada exacta en la que la
  * partida los demuestra.
  */
-export function construirRecorrido(informe: InformePartida): Recorrido {
-  const color = informe.colorJugador;
+export function construirRecorrido(informe: InformePartida, color: Color): Recorrido {
   const jugadas = informe.jugadas;
   const mias = jugadas.filter((j) => j.color === color);
 
   const fens = [jugadas[0]?.fenAntes ?? new Chess().fen(), ...jugadas.map((j) => j.fenDespues)];
   const anotaciones = new Map<number, Anotacion>();
 
-  // Los momentos clave se anotan en la posición ANTERIOR a la jugada: es donde
+  // Tus jugadas con algo que decir se anotan en la posición ANTERIOR: es donde
   // había que decidir, y donde tiene sentido dibujar las dos alternativas.
-  for (const j of momentosClave(mias)) {
+  for (const j of jugadasComentables(mias)) {
     const parada = j.ply - 1;
     if (parada >= 1) colocar(anotaciones, parada, anotacionClave(j));
   }
 
-  const apertura = anotacionApertura(informe);
+  // Y tambien lo que hiciste bien: no todo el repaso pueden ser fallos.
+  for (const a of aciertos(jugadas, color)) colocar(anotaciones, a.parada, a.anotacion);
+
+  const apertura = anotacionApertura(informe, color);
   if (apertura) colocar(anotaciones, apertura.parada, apertura.anotacion);
 
   for (const habito of informe.resumen[color].habitos) {
-    const ubicada = anotacionHabito(habito, informe, mias);
+    const ubicada = anotacionHabito(habito, color, mias);
     if (ubicada) colocar(anotaciones, ubicada.parada, ubicada.anotacion);
   }
 
@@ -144,13 +146,19 @@ export function construirRecorrido(informe: InformePartida): Recorrido {
     jugadas,
     anotaciones,
     hitos: [...anotaciones.keys()].sort((a, b) => a - b),
-    resumen: construirResumen(informe),
-    cierre: construirCierre(informe, momentosClave(mias).length),
+    resumen: construirResumen(informe, color),
+    cierre: construirCierre(informe, color, jugadasComentables(mias).length),
   };
 }
 
 /** Prioridad cuando dos anotaciones caen en la misma parada. */
-const PRIORIDAD: Record<Anotacion['clase'], number> = { clave: 0, apertura: 1, habito: 2, fase: 3 };
+const PRIORIDAD: Record<Anotacion['clase'], number> = {
+  clave: 0,
+  acierto: 1,
+  apertura: 2,
+  habito: 3,
+  fase: 4,
+};
 
 /**
  * Coloca una anotación en su parada.
@@ -196,7 +204,14 @@ function anotacionClave(j: JugadaAnalizada): Anotacion {
 
   return {
     clase: 'clave',
-    seccion: 'Atención a esta jugada',
+    // El rótulo se ajusta a la gravedad: llamar "atención" a una jugada que solo
+    // era mejorable devalúa el aviso cuando de verdad hay un error.
+    seccion:
+      j.calidad === 'grave' || j.calidad === 'error'
+        ? 'Atención a esta jugada'
+        : j.calidad === 'imprecision'
+          ? 'Se puede afinar'
+          : 'Había algo mejor',
     titulo: `${j.numeroJugada}${j.color === 'w' ? '.' : '...'} ${j.san}`,
     // La continuación se pinta en su propio bloque: fuera del párrafo para no
     // repetir lo mismo dos veces en una pantalla pequeña.
@@ -218,6 +233,7 @@ function anotacionClave(j: JugadaAnalizada): Anotacion {
 
 function anotacionApertura(
   informe: InformePartida,
+  color: Color,
 ): { parada: number; anotacion: Anotacion } | null {
   const ap = informe.apertura;
   if (!ap) return null;
@@ -228,7 +244,7 @@ function anotacionApertura(
 
   // La primera jugada fuera de libro puede ser del rival: atribuírsela al
   // usuario sería falso y confunde sobre de quién es el turno.
-  const laSacoElUsuario = primeraPropia?.color === informe.colorJugador;
+  const laSacoElUsuario = primeraPropia?.color === color;
   const jugadaTeorica = Math.ceil(ap.plyLibro / 2);
 
   let texto: string;
@@ -274,10 +290,9 @@ function anotacionApertura(
 
 function anotacionHabito(
   habito: EtiquetaHabito,
-  informe: InformePartida,
+  color: Color,
   mias: JugadaAnalizada[],
 ): { parada: number; anotacion: Anotacion } | null {
-  const color = informe.colorJugador;
   const base = {
     clase: 'habito' as const,
     seccion: 'Hábito a corregir',
@@ -386,8 +401,7 @@ function anotacionHabito(
 /* Portada y cierre                                                    */
 /* ------------------------------------------------------------------ */
 
-function construirResumen(informe: InformePartida): Recorrido['resumen'] {
-  const color = informe.colorJugador;
+function construirResumen(informe: InformePartida, color: Color): Recorrido['resumen'] {
   const resumen = informe.resumen[color];
   const yo = color === 'w' ? informe.blancas : informe.negras;
   const rival = color === 'w' ? informe.negras : informe.blancas;
@@ -412,8 +426,15 @@ function construirResumen(informe: InformePartida): Recorrido['resumen'] {
   };
 }
 
-function construirCierre(informe: InformePartida, momentos: number): Recorrido['cierre'] {
-  const resumen = informe.resumen[informe.colorJugador];
+function construirCierre(
+  informe: InformePartida,
+  color: Color,
+  momentos: number,
+): Recorrido['cierre'] {
+  const resumen = informe.resumen[color];
+  // Los consejos redactados por el servidor son para el color que analizó; si
+  // el usuario cambia de bando en la pantalla, no le corresponden.
+  const consejos = color === informe.colorJugador ? informe.consejos : [];
   const puntos: string[] = [];
 
   puntos.push(
@@ -424,10 +445,10 @@ function construirCierre(informe: InformePartida, momentos: number): Recorrido['
 
   // Los consejos que hablan de la partida entera, y no de una posición, no
   // caben en la línea temporal: su sitio es el cierre.
-  const fase = informe.consejos.find((c) => c.titulo.startsWith('Tu fase'));
+  const fase = consejos.find((c) => c.titulo.startsWith('Tu fase'));
   if (fase) puntos.push(`${fase.titulo}. ${fase.detalle}`);
 
-  const material = informe.consejos.find((c) => c.titulo.includes('capturas ganadoras'));
+  const material = consejos.find((c) => c.titulo.includes('capturas ganadoras'));
   if (material) puntos.push(material.detalle);
 
   puntos.push(
@@ -444,21 +465,56 @@ function construirCierre(informe: InformePartida, momentos: number): Recorrido['
 /* Selección y utilidades                                              */
 /* ------------------------------------------------------------------ */
 
-/**
- * Las jugadas que merecen que el recorrido se detenga.
- *
- * Primero los errores de verdad; si la partida fue limpia, las imprecisiones
- * más caras, para que el repaso nunca quede sin nada que enseñar.
- */
-function momentosClave(mias: JugadaAnalizada[]): JugadaAnalizada[] {
-  const graves = mias.filter((j) => j.calidad === 'grave' || j.calidad === 'error');
-  if (graves.length > 0) return graves.slice(0, 8);
+/** Debajo de esto la jugada es practicamente equivalente a la mejor. */
+const RUIDO = 3;
 
-  return mias
-    .filter((j) => j.calidad === 'imprecision')
-    .sort((a, b) => b.perdidaWin - a.perdidaWin)
-    .slice(0, 3)
-    .sort((a, b) => a.ply - b.ply);
+/**
+ * Tus jugadas que merecen que el recorrido se detenga.
+ *
+ * El repaso es sobre lo que juegas tú, así que comentamos cualquier jugada tuya
+ * en la que hubiera algo mejor de verdad, no solo las peores de la partida. Se
+ * descarta lo que está a menos de tres puntos de probabilidad de victoria de la
+ * jugada del motor: ahí no hay nada que aprender, solo ruido.
+ */
+function jugadasComentables(mias: JugadaAnalizada[]): JugadaAnalizada[] {
+  return mias.filter((j) => j.comentario !== null && j.perdidaWin >= RUIDO);
+}
+
+/**
+ * Momentos en los que acertaste y conviene decirlo.
+ *
+ * Solo se felicita lo que tiene mérito comprobable: haber encontrado la jugada
+ * del motor justo después de que el rival fallara, es decir, haber castigado su
+ * error. Felicitar cada jugada obvia haría que el elogio no valiera nada.
+ */
+function aciertos(
+  jugadas: JugadaAnalizada[],
+  color: Color,
+): { parada: number; anotacion: Anotacion }[] {
+  const salida: { parada: number; anotacion: Anotacion }[] = [];
+
+  for (let i = 1; i < jugadas.length; i++) {
+    const mia = jugadas[i]!;
+    const suya = jugadas[i - 1]!;
+    if (mia.color !== color || mia.calidad !== 'mejor') continue;
+    if (suya.calidad !== 'grave' && suya.calidad !== 'error') continue;
+
+    salida.push({
+      parada: mia.ply,
+      anotacion: {
+        clase: 'acierto',
+        seccion: 'Bien jugado',
+        titulo: `${mia.numeroJugada}${mia.color === 'w' ? '.' : '…'} ${mia.san}`,
+        texto: `Tu rival acababa de fallar con ${suya.san} y lo has castigado con la jugada exacta que recomienda el motor. Esto es lo que hay que repetir: cuando el rival se equivoca, parar y buscar el castigo.`,
+        flechas: [{ desde: mia.uci.slice(0, 2), hasta: mia.uci.slice(2, 4), color: COLOR_MEJOR }],
+        resaltadas: {},
+        leyendas: [{ color: COLOR_MEJOR, texto: 'tu jugada, la mejor del tablero' }],
+        insignia: { texto: 'La mejor', tono: 'bien' },
+      },
+    });
+  }
+
+  return salida;
 }
 
 function piezaEn(fen: string, casilla: string): string | null {
