@@ -10,6 +10,7 @@ import {
   type Recorrido,
 } from '../lib/guion';
 import { TableroPaso } from './TableroPaso';
+import { PorQue } from './PorQue';
 import { barraEval, formatearEval } from '../lib/formato';
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
   onVerDetalle: () => void;
   /** Se avisa al cambiar de bando para corregir también el historial guardado. */
   onCambiarColor: (color: Color) => void;
+  /** El servidor tiene clave de IA: se puede pedir el razonamiento de una jugada. */
+  coachIa: boolean;
 }
 
 /** Separación entre tablero y texto, en píxeles (debe coincidir con el CSS). */
@@ -68,7 +71,7 @@ function useLadoTablero(
  * ni una más. Saltar de un consejo al siguiente movía el tablero varias jugadas
  * de golpe y se perdía el hilo de cómo se había llegado hasta ahí.
  */
-export function Guion({ informe, onSalir, onVerDetalle, onCambiarColor }: Props) {
+export function Guion({ informe, onSalir, onVerDetalle, onCambiarColor, coachIa }: Props) {
   // El color se puede cambiar aquí: si el análisis dedujo mal de qué bando
   // jugabas, verías la partida entera del revés y comentada al contrario.
   const [color, setColor] = useState<Color>(informe.colorJugador);
@@ -184,6 +187,8 @@ export function Guion({ informe, onSalir, onVerDetalle, onCambiarColor }: Props)
           ultimaJugada={ultimaJugada}
           proximaJugada={proximaJugada}
           color={color}
+          partidaId={informe.id}
+          coachIa={coachIa}
         />
       </div>
 
@@ -230,10 +235,12 @@ interface PanelProps {
   ultimaJugada: JugadaAnalizada | undefined;
   proximaJugada: JugadaAnalizada | undefined;
   color: Color;
+  partidaId: string;
+  coachIa: boolean;
 }
 
 const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
-  { recorrido, anotacion, enPortada, enCierre, ultimaJugada, proximaJugada, color },
+  { recorrido, anotacion, enPortada, enCierre, ultimaJugada, proximaJugada, color, partidaId, coachIa },
   ref,
 ) {
   if (enPortada) {
@@ -282,6 +289,14 @@ const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
             <span className="etiqueta">Seguiría</span>
             <code>{anotacion.linea.join(' ')}</code>
           </p>
+        )}
+        {anotacion.ply !== undefined && (
+          <PorQue
+            partidaId={partidaId}
+            ply={anotacion.ply}
+            guardado={anotacion.porQue}
+            disponible={coachIa}
+          />
         )}
       </div>
     );

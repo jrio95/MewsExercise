@@ -72,6 +72,11 @@ export interface JugadaAnalizada {
   etiquetas: EtiquetaJugada[];
   /** Explicacion en lenguaje natural generada a partir de los datos del motor. */
   comentario: string | null;
+  /**
+   * Razonamiento del modelo sobre por que la jugada falla o funciona. Se genera
+   * bajo demanda y se guarda en el informe para no volver a pedirlo.
+   */
+  porQue?: string | null;
 }
 
 export interface ResumenColor {

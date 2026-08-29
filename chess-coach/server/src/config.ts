@@ -38,4 +38,4 @@ export const MAX_PLIES = Number(process.env.MAX_PLIES ?? 300);
 
 /** Comentario narrado por IA: opcional, solo si hay clave. */
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
-export const COACH_MODEL = process.env.COACH_MODEL ?? 'claude-sonnet-5';
+export const COACH_MODEL = process.env.COACH_MODEL ?? 'claude-opus-5';

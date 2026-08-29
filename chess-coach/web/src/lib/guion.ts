@@ -46,6 +46,10 @@ export interface Anotacion {
   insignia?: { texto: string; tono: Tono };
   evolucion?: { antes: Evaluacion; despues: Evaluacion };
   linea?: string[];
+  /** Media jugada a la que se refiere, para poder pedir el razonamiento. */
+  ply?: number;
+  /** Razonamiento ya guardado en el informe, si se pidió antes. */
+  porQue?: string | null;
 }
 
 export interface Recorrido {
@@ -228,6 +232,8 @@ function anotacionClave(j: JugadaAnalizada): Anotacion {
     },
     evolucion: { antes: j.evalAntes, despues: j.evalDespues },
     linea: j.mejorLineaSan,
+    ply: j.ply,
+    porQue: j.porQue ?? null,
   };
 }
 
@@ -510,6 +516,8 @@ function aciertos(
         resaltadas: {},
         leyendas: [{ color: COLOR_MEJOR, texto: 'tu jugada, la mejor del tablero' }],
         insignia: { texto: 'La mejor', tono: 'bien' },
+        ply: mia.ply,
+        porQue: mia.porQue ?? null,
       },
     });
   }

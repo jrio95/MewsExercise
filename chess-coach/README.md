@@ -36,6 +36,8 @@ comentario sale de una evaluación concreta del motor.
   hueco que deja el texto. Se avanza también deslizando el dedo o con el teclado.
 - Hay un atajo para saltar al siguiente aviso, y el informe completo jugada a
   jugada sigue disponible al final.
+- En cada aviso hay un botón **¿Por qué?** que pide a Claude el razonamiento de
+  esa jugada concreta (ver más abajo). Solo aparece si el servidor tiene clave.
 
 **Por partida**
 - Evalúa las N+1 posiciones de la partida y calcula, para cada jugada, la pérdida
@@ -97,8 +99,30 @@ npm start        # sirve API + web en :8080
 | `COACH_MODEL` | `claude-sonnet-5` | Modelo para esa narrativa. |
 
 Sin `ANTHROPIC_API_KEY` la aplicación funciona igual: las explicaciones
-deterministas se generan a partir de los datos del motor, y la casilla de
-narrativa ni siquiera aparece.
+deterministas se generan a partir de los datos del motor, y las funciones que
+necesitan el modelo ni siquiera aparecen en la interfaz.
+
+### El botón "¿Por qué?"
+
+Stockfish dice **qué** pasa (esta jugada cuesta 390 centipeones, la mejor era
+Be3) pero no **por qué**. Eso es razonamiento, y es lo que hace el modelo.
+
+Se pide bajo demanda, por jugada, no durante el análisis: cada explicación es una
+llamada de pago y sólo interesan las jugadas que llaman la atención. La respuesta
+se guarda dentro del informe, así que volver a esa pantalla no vuelve a cobrar.
+
+Al modelo se le pasan **sólo hechos verificables** —FEN, evaluación antes y
+después, mejor jugada, línea principal del motor, piezas que quedan sin defensa,
+material, fase— y tiene prohibido inventar variantes o contradecir al motor. El
+análisis duro sigue siendo de Stockfish; el modelo únicamente lo traduce a un
+motivo.
+
+Usa `claude-opus-5` con pensamiento adaptativo, que es justo el caso que lo
+justifica: entender por qué una jugada falla es un problema de razonamiento, no
+de redacción. Se puede cambiar con `COACH_MODEL`.
+
+Para activarlo en Railway, añade `ANTHROPIC_API_KEY` en las variables del
+servicio. Sin ella el endpoint responde 503 y el botón no se muestra.
 
 ## Cómo funciona el análisis
 
@@ -157,6 +181,7 @@ verdad solo toca `usuarioDe()` en `server/src/routes/api.ts`.
 | `POST` | `/api/analizar` | Analiza un PGN. Cuerpo: `pgn`, `nivel`, `colorJugador`, `nombreJugador`, `guardar`, `narrar`. |
 | `GET` | `/api/partidas` | Historial del usuario. |
 | `GET` | `/api/partidas/:id` | Informe completo de una partida. |
+| `POST` | `/api/partidas/:id/por-que` | Razonamiento del modelo sobre una jugada (`ply`), cacheado en el informe. |
 | `PATCH` | `/api/partidas/:id/color` | Corrige el bando de una partida guardada, sin volver a analizarla. |
 | `DELETE` | `/api/partidas/:id` | Borra una partida. |
 | `GET` | `/api/estadisticas` | Agregados y plan de entrenamiento. |
@@ -190,3 +215,7 @@ npm -w server run build:eco
   menor o mayor. Un cambio malo bien calculado puede caer en esa etiqueta.
 - El historial va por navegador, no por persona: si cambias de dispositivo,
   empiezas de cero.
+- El "¿Por qué?" razona sobre los datos del motor, no sobre literatura de
+  ajedrez: acierta con las razones tácticas y con los conceptos habituales, pero
+  no cita teoría de aperturas ni planes de un libro concreto. Ahí es donde
+  encajaría un RAG sobre documentos de ajedrez más adelante.

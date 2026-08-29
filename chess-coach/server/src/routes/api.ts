@@ -1,12 +1,14 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { analizarPartida, PgnInvalidoError } from '../analysis/analyzeGame.js';
-import { narrarPartida, coachDisponible } from '../coach/llm.js';
+import { narrarPartida } from '../coach/llm.js';
+import { CoachNoConfigurado, coachDisponible, explicarJugada } from '../coach/explicar.js';
 import {
   borrarPartida,
   calcularEstadisticas,
   cambiarColor,
   guardarPartida,
+  guardarPorQue,
   listarPartidas,
   obtenerPartida,
 } from '../db/games.js';
@@ -94,6 +96,54 @@ api.get('/partidas/:id', (req, res) => {
     return;
   }
   res.json(informe);
+});
+
+const esquemaPorQue = z.object({ ply: z.number().int().positive() });
+
+/**
+ * Explica una jugada concreta con razonamiento del modelo.
+ *
+ * Va bajo demanda y no dentro del analisis: cada explicacion es una llamada de
+ * pago, y el usuario solo quiere el "por que" de las jugadas que le interesan.
+ * La respuesta queda cacheada en el informe.
+ */
+api.post('/partidas/:id/por-que', async (req, res) => {
+  const parsed = esquemaPorQue.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Falta el numero de media jugada.' });
+    return;
+  }
+
+  const usuario = usuarioDe(req);
+  const informe = obtenerPartida(usuario, req.params.id);
+  if (!informe) {
+    res.status(404).json({ error: 'Partida no encontrada' });
+    return;
+  }
+
+  const jugada = informe.jugadas.find((j) => j.ply === parsed.data.ply);
+  if (!jugada) {
+    res.status(404).json({ error: 'Jugada no encontrada' });
+    return;
+  }
+
+  if (jugada.porQue) {
+    res.json({ porQue: jugada.porQue, cacheada: true });
+    return;
+  }
+
+  try {
+    const porQue = await explicarJugada(informe, jugada);
+    guardarPorQue(usuario, req.params.id, jugada.ply, porQue);
+    res.json({ porQue, cacheada: false });
+  } catch (err) {
+    if (err instanceof CoachNoConfigurado) {
+      res.status(503).json({ error: 'El entrenador con IA no esta configurado en este servidor.' });
+      return;
+    }
+    console.error('[api] fallo la explicacion:', err);
+    res.status(502).json({ error: 'No se pudo generar la explicacion. Intentalo de nuevo.' });
+  }
 });
 
 const esquemaColor = z.object({ colorJugador: z.enum(['w', 'b']) });

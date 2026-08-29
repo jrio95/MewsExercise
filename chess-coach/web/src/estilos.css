@@ -366,10 +366,18 @@ footer p { margin: 0; color: var(--texto-2); font-size: 13px; }
 .hueco-tablero { display: flex; align-items: flex-start; justify-content: center; min-height: 0; }
 
 /*
- * El texto no puede comerse el tablero: si un paso trae mucha explicacion,
- * se desplaza dentro de su propio bloque en lugar de dejar las piezas diminutas.
+ * El texto no puede comerse el tablero: si un paso trae mucha explicacion, se
+ * desplaza dentro de su propio bloque en lugar de dejar las piezas diminutas.
+ * La barra fina es deliberada: sin ella el texto recortado parece un fallo de
+ * maquetacion en lugar de contenido que continua.
  */
-.guion-texto { min-height: 0; max-height: 52%; overflow-y: auto; flex: none; }
+.guion-texto {
+  min-height: 0; max-height: 62%; overflow-y: auto; flex: none;
+  scrollbar-width: thin; scrollbar-color: var(--borde) transparent;
+  overscroll-behavior: contain;
+}
+.guion-texto::-webkit-scrollbar { width: 5px; }
+.guion-texto::-webkit-scrollbar-thumb { background: var(--borde); border-radius: 3px; }
 .guion-titulo-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .guion-texto h2 { margin: 0; font-size: 19px; letter-spacing: -0.01em; }
 .guion-texto p { margin: 0; color: #c8cddb; font-size: 15px; line-height: 1.5; }
@@ -407,6 +415,26 @@ footer p { margin: 0; color: var(--texto-2); font-size: 13px; }
 
 /* En las jugadas sin comentario el panel es corto: no debe estirarse. */
 .guion-texto-simple { color: var(--texto-2); }
+
+/* ---------- razonamiento bajo demanda ---------- */
+.por-que-accion { margin-top: 12px; }
+.boton-porque {
+  width: 100%; background: transparent; color: var(--acento);
+  border: 1px dashed var(--borde); border-radius: 9px;
+  padding: 11px 14px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.boton-porque:hover:not(:disabled) { border-color: var(--acento); background: rgb(122 162 247 / 0.08); }
+.boton-porque:disabled { opacity: 0.6; cursor: progress; }
+.por-que-error { margin: 8px 0 0; color: var(--grave); font-size: 13px; }
+
+.por-que {
+  margin-top: 12px; padding: 12px 14px;
+  background: rgb(122 162 247 / 0.08);
+  border-left: 3px solid var(--acento); border-radius: 0 8px 8px 0;
+}
+.por-que .etiqueta { display: block; margin-bottom: 5px; color: var(--acento); }
+.por-que p { margin: 0 0 8px; color: #c8cddb; font-size: 14.5px; line-height: 1.5; }
+.por-que p:last-child { margin-bottom: 0; }
 
 .guion-nav { display: flex; gap: 10px; }
 .guion-nav button { flex: 1; padding: 15px 16px; font-size: 16px; border-radius: 10px; }

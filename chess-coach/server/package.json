@@ -13,7 +13,7 @@
     "build:eco": "tsx scripts/build-eco.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.68.0",
+    "@anthropic-ai/sdk": "^0.122.0",
     "better-sqlite3": "^11.8.1",
     "chess.js": "^1.4.0",
     "compression": "^1.7.5",

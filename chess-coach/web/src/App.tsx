@@ -140,6 +140,7 @@ export default function App() {
         onSalir={() => setInforme(null)}
         onVerDetalle={() => setModo('detalle')}
         onCambiarColor={corregirColor}
+        coachIa={coachIa}
       />
     );
   }

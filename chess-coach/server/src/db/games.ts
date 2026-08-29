@@ -122,6 +122,32 @@ export function borrarPartida(usuario: string, id: string): boolean {
 }
 
 /**
+ * Guarda la explicación razonada de una jugada dentro del informe.
+ *
+ * Se cachea porque cada explicación es una llamada de pago al modelo: sin esto,
+ * volver atrás en el repaso la pediría otra vez.
+ */
+export function guardarPorQue(
+  usuario: string,
+  id: string,
+  ply: number,
+  porQue: string,
+): InformePartida | null {
+  const informe = obtenerPartida(usuario, id);
+  if (!informe) return null;
+
+  const jugada = informe.jugadas.find((j) => j.ply === ply);
+  if (!jugada) return null;
+  jugada.porQue = porQue;
+
+  getDb()
+    .prepare('UPDATE partidas SET informe = ? WHERE id = ? AND usuario = ?')
+    .run(JSON.stringify(informe), id, usuario);
+
+  return informe;
+}
+
+/**
  * Rehace una partida guardada desde el otro bando.
  *
  * El informe ya contiene el analisis de los dos colores, asi que cambiar de

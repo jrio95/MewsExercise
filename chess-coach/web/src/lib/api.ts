@@ -61,6 +61,13 @@ export const api = {
 
   borrar: (id: string) => peticion<void>(`/partidas/${id}`, { method: 'DELETE' }),
 
+  /** Pide (o recupera de caché) el razonamiento del modelo sobre una jugada. */
+  porQue: (id: string, ply: number) =>
+    peticion<{ porQue: string; cacheada: boolean }>(`/partidas/${id}/por-que`, {
+      method: 'POST',
+      body: JSON.stringify({ ply }),
+    }),
+
   /** Corrige el bando de una partida guardada, sin volver a analizarla. */
   cambiarColor: (id: string, colorJugador: 'w' | 'b') =>
     peticion<InformePartida>(`/partidas/${id}/color`, {

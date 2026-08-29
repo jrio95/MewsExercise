@@ -1,12 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_API_KEY, COACH_MODEL } from '../config.js';
+import { coachDisponible } from './explicar.js';
 import type { InformePartida } from '../types.js';
 
 let cliente: Anthropic | null = null;
 
-export function coachDisponible(): boolean {
-  return ANTHROPIC_API_KEY.length > 0;
-}
+export { coachDisponible } from './explicar.js';
 
 /**
  * Narrativa opcional del entrenador.
