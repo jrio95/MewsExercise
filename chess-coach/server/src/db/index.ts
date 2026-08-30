@@ -69,6 +69,28 @@ function migrar(d: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_fases_usuario ON fases (usuario, fase);
   `);
+
+  anadirColumna(d, 'partidas', 'fuente', 'TEXT');
+  anadirColumna(d, 'partidas', 'fuente_id', 'TEXT');
+
+  // Evita analizar dos veces la misma partida importada. No es UNIQUE a secas
+  // porque las partidas pegadas a mano no tienen origen y todas valdrian NULL.
+  d.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_partidas_fuente
+      ON partidas (usuario, fuente_id) WHERE fuente_id IS NOT NULL;
+  `);
+}
+
+/**
+ * Anade una columna solo si falta.
+ *
+ * Las bases ya desplegadas tienen partidas dentro: `ALTER TABLE` fallaria al
+ * arrancar si la columna existe, y borrar y recrear perderia el historico.
+ */
+function anadirColumna(d: Database.Database, tabla: string, columna: string, tipo: string): void {
+  const existentes = d.prepare(`PRAGMA table_info(${tabla})`).all() as { name: string }[];
+  if (existentes.some((c) => c.name === columna)) return;
+  d.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna} ${tipo}`);
 }
 
 export function cerrarDb(): void {

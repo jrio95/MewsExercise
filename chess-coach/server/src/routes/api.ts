@@ -11,8 +11,10 @@ import {
   guardarPorQue,
   listarPartidas,
   obtenerPartida,
+  yaImportadas,
 } from '../db/games.js';
 import { pool, poolSize } from '../engine/pool.js';
+import { ChessComError, traerPartidas } from '../importar/chesscom.js';
 import { DEPTHS } from '../config.js';
 
 export const api = Router();
@@ -26,18 +28,25 @@ const esquemaAnalisis = z.object({
   nombreJugador: z.string().max(120).optional(),
   guardar: z.boolean().default(true),
   narrar: z.boolean().default(false),
+  /** Origen, cuando la partida llega importada y no pegada a mano. */
+  fuente: z.string().max(32).optional(),
+  fuenteId: z.string().max(300).optional(),
 });
 
 /**
  * Identidad del usuario.
  *
- * No hay login: el cliente genera un identificador y lo manda en una cabecera.
- * Es suficiente para que cada navegador tenga su propio historico y deja la
- * puerta abierta a sustituirlo por un usuario autenticado sin tocar el resto.
+ * No hay login. Puede ser un identificador anonimo generado por el navegador o,
+ * si ha conectado Chess.com, `cc-<usuario>`: asi el historico le sigue de un
+ * dispositivo a otro sin contrasenas, que es lo que de verdad duele perder.
+ *
+ * El precio esta asumido y documentado: cualquiera que escriba ese nombre ve
+ * ese historico. Son analisis de partidas ya publicas en Chess.com. El dia que
+ * eso deje de bastar, este es el unico punto que hay que cambiar.
  */
 function usuarioDe(req: Request): string {
   const cabecera = req.header('x-coach-user');
-  if (cabecera && /^[A-Za-z0-9_-]{8,64}$/.test(cabecera)) return cabecera;
+  if (cabecera && /^[A-Za-z0-9_-]{3,64}$/.test(cabecera)) return cabecera;
   return 'anonimo';
 }
 
@@ -59,7 +68,7 @@ api.post('/analizar', async (req, res) => {
     return;
   }
 
-  const { pgn, nivel, colorJugador, nombreJugador, guardar, narrar } = parsed.data;
+  const { pgn, nivel, colorJugador, nombreJugador, guardar, narrar, fuente, fuenteId } = parsed.data;
 
   try {
     const informe = await analizarPartida({ pgn, nivel, colorJugador, nombreJugador });
@@ -69,7 +78,8 @@ api.post('/analizar', async (req, res) => {
     }
 
     if (guardar) {
-      guardarPartida(usuarioDe(req), informe);
+      const origen = fuente && fuenteId ? { fuente, fuenteId } : undefined;
+      guardarPartida(usuarioDe(req), informe, origen);
     }
 
     res.json(informe);
@@ -80,6 +90,38 @@ api.post('/analizar', async (req, res) => {
     }
     console.error('[api] fallo el analisis:', err);
     res.status(500).json({ error: 'No se pudo analizar la partida. Intentalo de nuevo.' });
+  }
+});
+
+/**
+ * Lista las ultimas partidas de un usuario de Chess.com, sin analizarlas.
+ *
+ * Analizar diez partidas lleva su tiempo, asi que primero se enseñan y el
+ * usuario elige. Se marcan las que ya estan en su historico para no repetirlas.
+ */
+api.get('/chesscom/:usuario', async (req, res) => {
+  const limite = Math.min(Math.max(Number(req.query.limite ?? 10) || 10, 1), 50);
+
+  try {
+    const partidas = await traerPartidas(req.params.usuario, limite);
+    const conocidas = yaImportadas(
+      usuarioDe(req),
+      partidas.map((p) => p.fuenteId),
+    );
+
+    res.json(
+      partidas.map((p) => ({ ...p, yaAnalizada: conocidas.has(p.fuenteId) })),
+    );
+  } catch (err) {
+    if (err instanceof ChessComError) {
+      res.status(err.estado).json({ error: err.message });
+      return;
+    }
+    // Un cambio en el formato de su API cae aqui: mejor decirlo que fingir.
+    console.error('[api] fallo la importacion de Chess.com:', err);
+    res.status(502).json({
+      error: 'Chess.com ha devuelto algo que no se entiende. Puede que hayan cambiado su API.',
+    });
   }
 });
 

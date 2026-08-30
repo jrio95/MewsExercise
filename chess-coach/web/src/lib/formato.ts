@@ -49,6 +49,18 @@ export function fechaCorta(iso: string): string {
   });
 }
 
+/**
+ * Fecha sin hora.
+ *
+ * Los PGN de Chess.com solo traen el dia, asi que enseñar "00:00" es ruido que
+ * ademas sugiere una precision que el dato no tiene.
+ */
+export function fechaDia(texto: string): string {
+  const d = new Date(texto.replace(/\./g, '-'));
+  if (Number.isNaN(d.getTime())) return texto;
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export function nombreJugada(ply: number): string {
   return `${Math.ceil(ply / 2)}${ply % 2 === 1 ? '.' : '...'}`;
 }

@@ -29,8 +29,14 @@ interface FilaPartida {
   imprecisiones: number;
 }
 
+/** Origen de una partida importada, para no volver a analizarla. */
+export interface Origen {
+  fuente: string;
+  fuenteId: string;
+}
+
 /** Guarda el informe completo y sus agregados derivados en una sola transaccion. */
-export function guardarPartida(usuario: string, informe: InformePartida): void {
+export function guardarPartida(usuario: string, informe: InformePartida, origen?: Origen): void {
   const db = getDb();
   const resumen = informe.resumen[informe.colorJugador];
 
@@ -38,8 +44,8 @@ export function guardarPartida(usuario: string, informe: InformePartida): void {
     db.prepare(
       `INSERT OR REPLACE INTO partidas
        (id, usuario, creado_en, blancas, negras, resultado, color_jugador, eco, apertura,
-        precision, graves, errores, imprecisiones, nivel, pgn, informe)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        precision, graves, errores, imprecisiones, nivel, pgn, informe, fuente, fuente_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       informe.id,
       usuario,
@@ -57,6 +63,8 @@ export function guardarPartida(usuario: string, informe: InformePartida): void {
       informe.nivel,
       informe.pgn,
       JSON.stringify(informe),
+      origen?.fuente ?? null,
+      origen?.fuenteId ?? null,
     );
 
     const etiqueta = db.prepare(
@@ -102,6 +110,24 @@ export function listarPartidas(usuario: string, limite = 50, desplazamiento = 0)
     errores: f.errores,
     imprecisiones: f.imprecisiones,
   }));
+}
+
+/**
+ * De una lista de identificadores de origen, cuales ya estan analizados.
+ *
+ * Se consulta antes de importar para no gastar motor en partidas repetidas.
+ */
+export function yaImportadas(usuario: string, fuenteIds: string[]): Set<string> {
+  if (fuenteIds.length === 0) return new Set();
+
+  const huecos = fuenteIds.map(() => '?').join(',');
+  const filas = getDb()
+    .prepare(
+      `SELECT fuente_id FROM partidas WHERE usuario = ? AND fuente_id IN (${huecos})`,
+    )
+    .all(usuario, ...fuenteIds) as { fuente_id: string }[];
+
+  return new Set(filas.map((f) => f.fuente_id));
 }
 
 export function obtenerPartida(usuario: string, id: string): InformePartida | null {

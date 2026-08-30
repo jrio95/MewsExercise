@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Color, InformePartida, EstadisticasGlobales, PartidaResumida } from '@shared';
-import { api, type PeticionAnalisis } from './lib/api';
+import { api, type PartidaChesscom, type PeticionAnalisis } from './lib/api';
 import { PgnForm } from './components/PgnForm';
 import { Tablero } from './components/Tablero';
 import { ListaJugadas } from './components/ListaJugadas';
@@ -8,6 +8,7 @@ import { DetalleJugada } from './components/DetalleJugada';
 import { Resumen } from './components/Resumen';
 import { Historico } from './components/Historico';
 import { Progreso } from './components/Progreso';
+import { ImportarChesscom } from './components/ImportarChesscom';
 import { Guion } from './components/Guion';
 
 type Pestana = 'analizar' | 'historico' | 'progreso';
@@ -74,6 +75,33 @@ export default function App() {
       setError(e instanceof Error ? e.message : 'No se pudo analizar la partida.');
     } finally {
       setCargando(false);
+    }
+  };
+
+  /**
+   * Analiza una partida traida de Chess.com.
+   *
+   * No abre el informe al terminar: en una importacion se encadenan varias y
+   * saltar a cada una seria mareante. El valor esta en el conjunto, que se ve
+   * en Progreso.
+   */
+  const analizarImportada = async (
+    partida: PartidaChesscom,
+    nivel: PeticionAnalisis['nivel'],
+  ): Promise<boolean> => {
+    if (!partida.tuColor) return false;
+    try {
+      await api.analizar({
+        pgn: partida.pgn,
+        nivel,
+        colorJugador: partida.tuColor,
+        narrar: false,
+        fuente: 'chesscom',
+        fuenteId: partida.fuenteId,
+      });
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -180,6 +208,14 @@ export default function App() {
 
         {pestana === 'analizar' && (
           <>
+            <ImportarChesscom
+              onAnalizar={analizarImportada}
+              onTerminado={refrescarHistorico}
+              ocupado={cargando}
+            />
+
+            <p className="separador-o">o pega el PGN a mano</p>
+
             <PgnForm onAnalizar={analizar} cargando={cargando} coachIa={coachIa} />
 
             {cargando && (

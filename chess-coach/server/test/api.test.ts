@@ -8,7 +8,7 @@ import { join } from 'node:path';
 const dir = mkdtempSync(join(tmpdir(), 'chess-coach-test-'));
 process.env.DATA_DIR = dir;
 
-const { guardarPartida, listarPartidas, obtenerPartida, borrarPartida, calcularEstadisticas } =
+const { guardarPartida, listarPartidas, obtenerPartida, borrarPartida, calcularEstadisticas, yaImportadas } =
   await import('../src/db/games.js');
 const { analizarPartida, PgnInvalidoError } = await import('../src/analysis/analyzeGame.js');
 const { pool } = await import('../src/engine/pool.js');
@@ -173,3 +173,39 @@ test('cambiar de bando rehace consejos y agregados sin volver a analizar', async
   assert.equal(cambiarColor('cris', 'no-existe', 'w'), null);
 });
 
+
+test('una partida importada dos veces se actualiza, no se duplica', async (t) => {
+  if (!motorDisponible) return t.skip('stockfish no disponible en este entorno');
+
+  const origen = { fuente: 'chesscom', fuenteId: 'https://www.chess.com/game/live/42' };
+  const informe = await analizarPartida({ pgn: PGN_CORTO, nivel: 'rapido', colorJugador: 'w' });
+
+  guardarPartida('dani', informe, origen);
+  assert.deepEqual([...yaImportadas('dani', [origen.fuenteId])], [origen.fuenteId]);
+  assert.equal(listarPartidas('dani').length, 1);
+
+  // Reanalizar la misma partida (por ejemplo a mas profundidad) la reemplaza.
+  const masProfundo = await analizarPartida({ pgn: PGN_CORTO, nivel: 'rapido', colorJugador: 'b' });
+  guardarPartida('dani', masProfundo, origen);
+
+  const historico = listarPartidas('dani');
+  assert.equal(historico.length, 1, 'el indice unico impide dos filas para la misma partida');
+  assert.equal(historico[0]!.id, masProfundo.id, 'queda la version mas reciente');
+  assert.equal(historico[0]!.colorJugador, 'b');
+
+  // Y las etiquetas del analisis anterior no quedan colgadas.
+  const stats = calcularEstadisticas('dani');
+  assert.equal(stats.partidas, 1);
+});
+
+test('las partidas pegadas a mano no chocan entre si aunque no tengan origen', async (t) => {
+  if (!motorDisponible) return t.skip('stockfish no disponible en este entorno');
+
+  const a = await analizarPartida({ pgn: PGN_CORTO, nivel: 'rapido', colorJugador: 'w' });
+  const b = await analizarPartida({ pgn: PGN_OPERA, nivel: 'rapido', colorJugador: 'w' });
+
+  // Sin fuente_id el indice unico no aplica: dos partidas conviven.
+  guardarPartida('eva', a);
+  guardarPartida('eva', b);
+  assert.equal(listarPartidas('eva').length, 2);
+});

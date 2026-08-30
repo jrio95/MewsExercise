@@ -56,6 +56,19 @@ comentario sale de una evaluación concreta del motor.
 - Precisión global por jugador, con el método de Lichess (media ponderada por
   volatilidad + media armónica).
 
+**Importar de Chess.com**
+- Escribes tu usuario y trae tus últimas partidas (hasta 50, buscando en los
+  últimos seis meses de archivos). No hace falta login: su API pública sólo pide
+  el nombre.
+- Se listan antes de analizar, con rival, Elo, resultado y control de tiempo, y
+  las que ya están en tu historial vienen marcadas y desmarcadas para no gastar
+  motor dos veces. Tu color se deduce de las cabeceras, así que no hay que elegirlo.
+- Tu historial queda ligado a ese usuario (`cc-<usuario>`), de modo que te sigue
+  del móvil al ordenador sin contraseñas. **Sin autenticación**: cualquiera que
+  escriba tu usuario ve tu historial. Son análisis de partidas ya públicas en
+  Chess.com; si eso deja de bastar, `usuarioDe()` en `routes/api.ts` es el único
+  punto que hay que cambiar.
+
 **Por historial**
 - Guarda cada partida analizada y agrega tus errores más repetidos, en cuántas
   partidas aparece cada uno, tu rendimiento por apertura y tu evolución.
@@ -97,6 +110,7 @@ npm start        # sirve API + web en :8080
 | `ENGINE_THREADS` | `1` | Hilos por proceso. |
 | `ENGINE_HASH_MB` | `64` | Tabla de transposición por proceso. |
 | `MAX_PLIES` | `300` | Tope de medias jugadas por partida. |
+| `CHESSCOM_USER_AGENT` | uno propio | Chess.com rechaza peticiones sin User-Agent identificable. |
 | `ANTHROPIC_API_KEY` | — | Opcional. Activa el comentario narrado por IA. |
 | `COACH_MODEL` | `claude-sonnet-5` | Modelo para esa narrativa. |
 
@@ -181,6 +195,7 @@ verdad solo toca `usuarioDe()` en `server/src/routes/api.ts`.
 | --- | --- | --- |
 | `GET` | `/api/salud` | Estado del motor y de la aplicación. |
 | `POST` | `/api/analizar` | Analiza un PGN. Cuerpo: `pgn`, `nivel`, `colorJugador`, `nombreJugador`, `guardar`, `narrar`. |
+| `GET` | `/api/chesscom/:usuario` | Últimas partidas de Chess.com sin analizar, marcando las ya importadas. |
 | `GET` | `/api/partidas` | Historial del usuario. |
 | `GET` | `/api/partidas/:id` | Informe completo de una partida. |
 | `POST` | `/api/partidas/:id/por-que` | Razonamiento del modelo sobre una jugada (`ply`), cacheado en el informe. |

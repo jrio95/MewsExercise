@@ -8,18 +8,37 @@ import type { EstadisticasGlobales, InformePartida, PartidaResumida } from '@sha
  * despliegue. Se puede exportar/importar copiandolo a mano.
  */
 const CLAVE_USUARIO = 'chess-coach:usuario';
+const CLAVE_CHESSCOM = 'chess-coach:chesscom';
 
 export function usuarioActual(): string {
   let id = localStorage.getItem(CLAVE_USUARIO);
-  if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+  if (!id || !/^[A-Za-z0-9_-]{3,64}$/.test(id)) {
     id = crypto.randomUUID().replace(/-/g, '').slice(0, 24);
     localStorage.setItem(CLAVE_USUARIO, id);
   }
   return id;
 }
 
-export function fijarUsuario(id: string): void {
-  localStorage.setItem(CLAVE_USUARIO, id);
+/** Usuario de Chess.com conectado, si lo hay. */
+export function chesscomActual(): string | null {
+  return localStorage.getItem(CLAVE_CHESSCOM);
+}
+
+/**
+ * Ata el historico al usuario de Chess.com.
+ *
+ * Es lo que hace que el historico siga al jugador de un dispositivo a otro sin
+ * necesidad de contrasenas: el nombre de Chess.com pasa a ser su identidad.
+ */
+export function conectarChesscom(usuario: string): void {
+  const limpio = usuario.trim();
+  localStorage.setItem(CLAVE_CHESSCOM, limpio);
+  localStorage.setItem(CLAVE_USUARIO, `cc-${limpio.toLowerCase()}`);
+}
+
+export function desconectarChesscom(): void {
+  localStorage.removeItem(CLAVE_CHESSCOM);
+  localStorage.removeItem(CLAVE_USUARIO);
 }
 
 async function peticion<T>(ruta: string, init?: RequestInit): Promise<T> {
@@ -46,6 +65,25 @@ export interface PeticionAnalisis {
   colorJugador: 'w' | 'b';
   nombreJugador?: string;
   narrar: boolean;
+  /** Origen, cuando la partida viene importada y no pegada a mano. */
+  fuente?: string;
+  fuenteId?: string;
+}
+
+/** Partida de Chess.com todavia sin analizar. */
+export interface PartidaChesscom {
+  fuenteId: string;
+  pgn: string;
+  fecha: string | null;
+  blancas: string;
+  negras: string;
+  resultado: string;
+  tuColor: 'w' | 'b' | null;
+  rival: string;
+  eloRival: string | null;
+  controlTiempo: string | null;
+  enlace: string | null;
+  yaAnalizada: boolean;
 }
 
 export const api = {
@@ -56,6 +94,11 @@ export const api = {
     peticion<InformePartida>('/analizar', { method: 'POST', body: JSON.stringify(datos) }),
 
   partidas: () => peticion<PartidaResumida[]>('/partidas'),
+
+  chesscom: (usuario: string, limite = 10) =>
+    peticion<PartidaChesscom[]>(
+      `/chesscom/${encodeURIComponent(usuario)}?limite=${limite}`,
+    ),
 
   partida: (id: string) => peticion<InformePartida>(`/partidas/${id}`),
 
