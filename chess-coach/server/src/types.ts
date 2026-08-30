@@ -19,6 +19,7 @@ export type EtiquetaJugada =
   | 'mate_perdido'
   | 'mate_permitido'
   | 'pieza_colgada'
+  | 'defensa_abandonada'
   | 'material_perdido'
   | 'error_apertura'
   | 'error_medio'

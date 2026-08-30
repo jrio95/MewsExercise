@@ -133,6 +133,9 @@ export async function analizarPartida(opts: OpcionesAnalisis): Promise<InformePa
       jugadaJugada: { san: mv.san, captura: mv.captured ?? null, valorCaptura: 0, desde: mv.from, hasta: mv.to },
       respuestaRival,
       fase,
+      fenAntes: mv.before,
+      fenDespues: mv.after,
+      color,
     });
 
     const base = {
@@ -156,7 +159,10 @@ export async function analizarPartida(opts: OpcionesAnalisis): Promise<InformePa
       etiquetas,
     };
 
-    jugadas.push({ ...base, comentario: explicarJugada(base, respuestaRival?.san ?? null) });
+    jugadas.push({
+      ...base,
+      comentario: explicarJugada(base, respuestaRival?.san ?? null, respuestaRival?.hasta),
+    });
   }
 
   const movimientosBasicos = historial.map((m) => ({

@@ -47,7 +47,9 @@ comentario sale de una evaluación concreta del motor.
   (roja lo que jugaste, verde lo que había que jugar).
 - Identifica la apertura contra las 3.810 entradas del libro ECO de lichess, y
   dice en qué jugada te saliste de teoría.
-- Detecta patrones concretos: pieza colgada, captura ganadora que no viste, mate
+- Detecta patrones concretos y explica la razón, sin necesidad de IA: pieza
+  colgada, **defensa abandonada** (moviste la única pieza que defendía otra, y el
+  rival se lleva lo que quedó suelto), captura ganadora que no viste, mate
   perdido, mate permitido.
 - Detecta hábitos de partida completa: no enrocar, sacar la dama pronto,
   desarrollo lento, mover la misma pieza varias veces, debilitar los peones del rey.

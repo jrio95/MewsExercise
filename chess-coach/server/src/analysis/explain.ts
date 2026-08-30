@@ -1,5 +1,5 @@
 import type { Calidad, Consejo, EtiquetaHabito, JugadaAnalizada, ResumenColor } from '../types.js';
-import { DESCRIPCIONES } from './tags.js';
+import { DESCRIPCIONES, defensaAbandonada } from './tags.js';
 import { redondear } from './scoring.js';
 
 const NOMBRE_CALIDAD: Record<Calidad, string> = {
@@ -24,6 +24,8 @@ function nombreJugada(ply: number): string {
 export function explicarJugada(
   j: Omit<JugadaAnalizada, 'comentario'>,
   refutacionSan: string | null,
+  /** Casilla en la que captura la mejor respuesta del rival, si captura. */
+  casillaRefutacion?: string,
 ): string | null {
   if (j.calidad === 'mejor' || j.calidad === 'excelente') return null;
 
@@ -34,6 +36,20 @@ export function explicarJugada(
     partes.push(`${etiqueta}: tenias mate forzado y se te escapo.`);
   } else if (j.etiquetas.includes('mate_permitido')) {
     partes.push(`${etiqueta}: le das al rival un mate forzado.`);
+  } else if (j.etiquetas.includes('defensa_abandonada') && refutacionSan && casillaRefutacion) {
+    // La razon concreta: la pieza movida era la unica que defendia algo.
+    const suelta = defensaAbandonada(
+      j.fenAntes,
+      j.fenDespues,
+      casillaRefutacion,
+      j.uci.slice(2, 4),
+      j.color,
+    );
+    partes.push(
+      suelta
+        ? `${etiqueta}: la pieza que mueves era la unica que defendia tu ${suelta.pieza} de ${suelta.casilla}. El rival responde ${refutacionSan} y se lo lleva.`
+        : `${etiqueta}: el rival responde ${refutacionSan} y se lleva material gratis.`,
+    );
   } else if (j.etiquetas.includes('pieza_colgada') && refutacionSan) {
     partes.push(`${etiqueta}: el rival responde ${refutacionSan} y se lleva material gratis.`);
   } else if (j.etiquetas.includes('material_perdido') && j.mejorJugadaSan) {

@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Chess } from 'chess.js';
-import { describirUci, detectarHabitos, etiquetarJugada, lineaASan } from '../src/analysis/tags.js';
+import {
+  defensaAbandonada,
+  describirUci,
+  detectarHabitos,
+  etiquetarJugada,
+  lineaASan,
+} from '../src/analysis/tags.js';
 import { detectarApertura } from '../src/analysis/openings.js';
 import { calcularFinApertura, faseDe, materialNoPeonil } from '../src/analysis/phases.js';
 
@@ -31,6 +37,7 @@ test('lineaASan se detiene si la linea deja de ser legal', () => {
 });
 
 const jugadaNeutra = { san: 'Nf6', captura: null, valorCaptura: 0, desde: 'g8', hasta: 'f6' };
+const POSICION = { fenAntes: INICIAL, fenDespues: INICIAL, color: 'b' as const };
 
 test('etiqueta pieza colgada solo si el rival gana material de verdad', () => {
   const tags = etiquetarJugada({
@@ -40,6 +47,7 @@ test('etiqueta pieza colgada solo si el rival gana material de verdad', () => {
     jugadaMotor: null,
     jugadaJugada: jugadaNeutra,
     respuestaRival: { san: 'Bxf6', captura: 'n', valorCaptura: 3, desde: 'g5', hasta: 'f6' },
+    ...POSICION,
     fase: 'medio',
   });
   assert.ok(tags.includes('pieza_colgada'));
@@ -51,6 +59,7 @@ test('etiqueta pieza colgada solo si el rival gana material de verdad', () => {
     jugadaMotor: null,
     jugadaJugada: jugadaNeutra,
     respuestaRival: { san: 'gxh5', captura: 'p', valorCaptura: 1, desde: 'g4', hasta: 'h5' },
+    ...POSICION,
     fase: 'medio',
   });
   assert.ok(!peon.includes('pieza_colgada'), 'un peon no cuenta como pieza colgada');
@@ -64,6 +73,7 @@ test('una buena jugada no recibe etiquetas de error', () => {
     jugadaMotor: null,
     jugadaJugada: jugadaNeutra,
     respuestaRival: { san: 'Bxf6', captura: 'n', valorCaptura: 3, desde: 'g5', hasta: 'f6' },
+    ...POSICION,
     fase: 'medio',
   });
   assert.deepEqual(tags, []);
@@ -77,6 +87,7 @@ test('detecta mate perdido y mate permitido', () => {
     jugadaMotor: null,
     jugadaJugada: jugadaNeutra,
     respuestaRival: null,
+    ...POSICION,
     fase: 'medio',
   });
   assert.ok(perdido.includes('mate_perdido'));
@@ -88,6 +99,7 @@ test('detecta mate perdido y mate permitido', () => {
     jugadaMotor: null,
     jugadaJugada: jugadaNeutra,
     respuestaRival: null,
+    ...POSICION,
     fase: 'medio',
   });
   assert.ok(permitido.includes('mate_permitido'));
@@ -100,6 +112,7 @@ test('la etiqueta de fase acompana a todo error a partir de imprecision', () => 
     jugadaMotor: null,
     jugadaJugada: jugadaNeutra,
     respuestaRival: null,
+    ...POSICION,
   };
   assert.ok(etiquetarJugada({ ...base, perdidaWin: 8, fase: 'apertura' }).includes('error_apertura'));
   assert.ok(etiquetarJugada({ ...base, perdidaWin: 8, fase: 'final' }).includes('error_final'));
@@ -179,4 +192,35 @@ test('el material no peonil distingue apertura de final', () => {
 test('la apertura termina cuando ambos bandos han desarrollado', () => {
   const fin = calcularFinApertura(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'O-O', 'Nf6']);
   assert.ok(fin >= 6 && fin <= 24, `fin de apertura inesperado: ${fin}`);
+});
+
+test('detecta que la jugada abandona la defensa de otra pieza', () => {
+  // Posicion real de una partida del usuario: negras en jaque por Qb5+.
+  // El alfil de c8 es el UNICO defensor del peon de b7. Al ir a d7 tapa el
+  // jaque pero suelta b7, y las blancas responden Qxb7.
+  const antes = 'rnbqkbnr/pp4pp/5p2/1Qp1p3/3pP3/5NP1/PPPP1PBP/RNB1K2R b KQkq - 0 6';
+  const despues = 'rn1qkbnr/pp1b2pp/5p2/1Qp1p3/3pP3/5NP1/PPPP1PBP/RNB1K2R w KQkq - 1 7';
+
+  const suelta = defensaAbandonada(antes, despues, 'b7', 'd7', 'b');
+  assert.ok(suelta, 'deberia detectar que b7 se queda sin defensa');
+  assert.equal(suelta.pieza, 'peon');
+  assert.equal(suelta.casilla, 'b7');
+});
+
+test('no marca defensa abandonada si la pieza sigue defendida', () => {
+  // Con Nc6 el alfil se queda en c8 y b7 sigue defendido.
+  const antes = 'rnbqkbnr/pp4pp/5p2/1Qp1p3/3pP3/5NP1/PPPP1PBP/RNB1K2R b KQkq - 0 6';
+  const despues = 'r1bqkbnr/pp4pp/2n2p2/1Qp1p3/3pP3/5NP1/PPPP1PBP/RNB1K2R w KQkq - 1 7';
+  assert.equal(defensaAbandonada(antes, despues, 'b7', 'c6', 'b'), null);
+});
+
+test('colgar la pieza que acabas de mover no es defensa abandonada', () => {
+  const antes = 'rnbqkbnr/pp4pp/5p2/1Qp1p3/3pP3/5NP1/PPPP1PBP/RNB1K2R b KQkq - 0 6';
+  const despues = 'rn1qkbnr/pp1b2pp/5p2/1Qp1p3/3pP3/5NP1/PPPP1PBP/RNB1K2R w KQkq - 1 7';
+  // La casilla capturada coincide con el destino de la jugada: es otra cosa.
+  assert.equal(defensaAbandonada(antes, despues, 'd7', 'd7', 'b'), null);
+});
+
+test('defensaAbandonada no revienta con datos corruptos', () => {
+  assert.equal(defensaAbandonada('no es un fen', 'tampoco', 'b7', 'd7', 'b'), null);
 });

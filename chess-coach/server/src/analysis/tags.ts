@@ -5,6 +5,7 @@ export const DESCRIPCIONES: Record<Etiqueta, string> = {
   mate_perdido: 'Tenias mate forzado y no lo viste',
   mate_permitido: 'Permitiste un mate forzado del rival',
   pieza_colgada: 'Dejaste una pieza sin defender y el rival la captura gratis',
+  defensa_abandonada: 'Moviste la pieza que defendia otra, y el rival se lleva lo que quedo suelto',
   material_perdido: 'Habia una captura ganadora sobre el tablero y no la jugaste',
   error_apertura: 'Fallos en la apertura (primeras jugadas)',
   error_medio: 'Fallos en el medio juego',
@@ -74,6 +75,54 @@ function describirUciEn(chess: Chess, uci: string): string | null {
   }
 }
 
+/** Nombre de la pieza para poder decirlo en una frase. */
+export const NOMBRE_PIEZA: Record<string, string> = {
+  p: 'peon',
+  n: 'caballo',
+  b: 'alfil',
+  r: 'torre',
+  q: 'dama',
+  k: 'rey',
+};
+
+/**
+ * ¿La jugada dejó sin defensa algo que antes sí estaba defendido?
+ *
+ * Es la razón concreta de una familia entera de errores: mover la pieza que
+ * hacía de defensora. Se detecta comparando quién defiende la casilla antes y
+ * después, y sólo cuenta si el rival efectivamente captura ahí.
+ *
+ * Se excluye la casilla de destino de la propia jugada: eso es colgar la pieza
+ * que acabas de mover, que ya tiene su propia etiqueta.
+ */
+export function defensaAbandonada(
+  fenAntes: string,
+  fenDespues: string,
+  casillaCapturada: string,
+  destinoPropio: string,
+  color: Color,
+): { pieza: string; casilla: string } | null {
+  if (casillaCapturada === destinoPropio) return null;
+
+  try {
+    const antes = new Chess(fenAntes);
+    const despues = new Chess(fenDespues);
+
+    const pieza = antes.get(casillaCapturada as never);
+    // Tiene que ser una pieza nuestra que ya estaba ahí antes de mover.
+    if (!pieza || pieza.color !== color) return null;
+    if (despues.get(casillaCapturada as never)?.type !== pieza.type) return null;
+
+    const defendidaAntes = antes.isAttacked(casillaCapturada as never, color);
+    const defendidaDespues = despues.isAttacked(casillaCapturada as never, color);
+    if (!defendidaAntes || defendidaDespues) return null;
+
+    return { pieza: NOMBRE_PIEZA[pieza.type] ?? 'pieza', casilla: casillaCapturada };
+  } catch {
+    return null;
+  }
+}
+
 export interface ContextoEtiquetas {
   perdidaWin: number;
   /** Evaluacion antes, en centipeones desde el punto de vista del que mueve. */
@@ -84,6 +133,9 @@ export interface ContextoEtiquetas {
   jugadaJugada: InfoJugadaUci;
   respuestaRival: InfoJugadaUci | null;
   fase: 'apertura' | 'medio' | 'final';
+  fenAntes: string;
+  fenDespues: string;
+  color: Color;
 }
 
 /**
@@ -105,6 +157,19 @@ export function etiquetarJugada(ctx: ContextoEtiquetas): EtiquetaJugada[] {
 
   if (perdidaWin >= 10 && ctx.respuestaRival?.captura && ctx.respuestaRival.valorCaptura >= 3) {
     tags.push('pieza_colgada');
+  }
+
+  // Cubre lo que `pieza_colgada` deja fuera: perder un peon por haber movido a
+  // su unico defensor. El valor es pequeno, pero la razon es igual de concreta.
+  if (perdidaWin >= 5 && ctx.respuestaRival?.captura) {
+    const abandonada = defensaAbandonada(
+      ctx.fenAntes,
+      ctx.fenDespues,
+      ctx.respuestaRival.hasta,
+      ctx.jugadaJugada.hasta,
+      ctx.color,
+    );
+    if (abandonada) tags.push('defensa_abandonada');
   }
 
   if (
