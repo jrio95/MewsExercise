@@ -9,7 +9,8 @@ export function coachDisponible(): boolean {
   return ANTHROPIC_API_KEY.length > 0;
 }
 
-function obtenerCliente(): Anthropic {
+/** Cliente compartido: crearlo por peticion tiraria la reutilizacion de conexiones. */
+export function clienteAnthropic(): Anthropic {
   cliente ??= new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   return cliente;
 }
@@ -116,7 +117,7 @@ export async function explicarJugada(informe: InformePartida, j: JugadaAnalizada
     throw new CoachNoConfigurado('No hay ANTHROPIC_API_KEY configurada.');
   }
 
-  const respuesta = await obtenerCliente().beta.messages.create({
+  const respuesta = await clienteAnthropic().beta.messages.create({
     model: COACH_MODEL,
     max_tokens: 8000,
     // Entender por que una jugada falla es justo un problema de razonamiento:

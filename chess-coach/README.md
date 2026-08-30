@@ -74,10 +74,23 @@ comentario sale de una evaluación concreta del motor.
   Chess.com; si eso deja de bastar, `usuarioDe()` en `routes/api.ts` es el único
   punto que hay que cambiar.
 
-**Por historial**
-- Guarda cada partida analizada y agrega tus errores más repetidos, en cuántas
-  partidas aparece cada uno, tu rendimiento por apertura y tu evolución.
-- Convierte todo eso en un plan de entrenamiento priorizado.
+**Perfil del jugador** (pestaña *Mi perfil*)
+- **Lo que haces bien**, no sólo lo que fallas: si aprovechas los fallos del rival,
+  si juegas sin regalar partidas, cuál es tu mejor fase, si estás mejorando.
+- **Lo que repites**: los patrones que aparecen en al menos un tercio de tus
+  partidas, no incidencias sueltas.
+- **Cada conclusión lleva el dato que la sostiene y su fiabilidad.** Decir "tu
+  punto débil es el final" con tres finales jugados es ruido disfrazado de
+  diagnóstico, así que por debajo del mínimo de muestra el hallazgo ni se calcula.
+- **Repertorio separado por color**, que es donde de verdad se ven las
+  diferencias: precisión, puntos por partida, pérdida por fase y tus aperturas
+  con su desviación respecto a tu propia media.
+- Evolución de tu precisión y un plan por dónde empezar.
+- **Informe del entrenador** (opcional, requiere clave): un repaso escrito de todo
+  el perfil. Es el único punto de la aplicación donde el modelo puede recomendar
+  aperturas que no aparecen en tus partidas, y se le exige decir cuándo una
+  recomendación es criterio suyo y no una conclusión de tus datos. Se cachea por
+  número de partidas: mientras no analices más, no se vuelve a pagar.
 
 ## Arranque rápido
 
@@ -186,9 +199,12 @@ chess-coach/
 └── web/                   React + Vite, importa los tipos vía el alias @shared
 ```
 
-Las tablas `etiquetas` y `fases` guardan los agregados al insertar cada partida,
-así que las estadísticas globales no releen ningún informe: su coste no crece
-con el tamaño de las partidas.
+El perfil se calcula leyendo los informes completos, porque necesita el detalle
+jugada a jugada (qué hizo el rival, qué respondiste), que no está en los
+agregados. Se topa a las últimas 200 partidas. Las tablas `etiquetas` y `fases`
+siguen guardando agregados al insertar: son la base barata para cuando el
+histórico crezca lo suficiente como para que releer informes deje de salir a
+cuenta.
 
 No hay login. Cada navegador genera un identificador que viaja en la cabecera
 `x-coach-user`; es lo que separa los históricos. Sustituirlo por usuarios de
@@ -206,7 +222,8 @@ verdad solo toca `usuarioDe()` en `server/src/routes/api.ts`.
 | `POST` | `/api/partidas/:id/por-que` | Razonamiento del modelo sobre una jugada (`ply`), cacheado en el informe. |
 | `PATCH` | `/api/partidas/:id/color` | Corrige el bando de una partida guardada, sin volver a analizarla. |
 | `DELETE` | `/api/partidas/:id` | Borra una partida. |
-| `GET` | `/api/estadisticas` | Agregados y plan de entrenamiento. |
+| `GET` | `/api/perfil` | Perfil del jugador sobre todo el histórico. |
+| `POST` | `/api/perfil/informe` | Informe del entrenador sobre el perfil, cacheado por número de partidas. |
 
 ## Despliegue en Railway
 

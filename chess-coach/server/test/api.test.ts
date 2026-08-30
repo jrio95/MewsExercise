@@ -8,9 +8,11 @@ import { join } from 'node:path';
 const dir = mkdtempSync(join(tmpdir(), 'chess-coach-test-'));
 process.env.DATA_DIR = dir;
 
-const { guardarPartida, listarPartidas, obtenerPartida, borrarPartida, calcularEstadisticas, yaImportadas } =
+const { guardarPartida, listarPartidas, obtenerPartida, borrarPartida, yaImportadas, informesDe } =
   await import('../src/db/games.js');
 const { analizarPartida, PgnInvalidoError } = await import('../src/analysis/analyzeGame.js');
+const { construirPerfil } = await import('../src/analysis/perfil.js');
+const { getDb } = await import('../src/db/index.js');
 const { pool } = await import('../src/engine/pool.js');
 const { cerrarDb } = await import('../src/db/index.js');
 
@@ -114,24 +116,19 @@ test('las estadisticas agregan etiquetas y aperturas del historico', async (t) =
   guardarPartida('bea', { ...informe, id: 'partida-1' });
   guardarPartida('bea', { ...informe, id: 'partida-2' });
 
-  const stats = calcularEstadisticas('bea');
-  assert.equal(stats.partidas, 2);
-  assert.ok(stats.precisionMedia > 0);
-  assert.ok(stats.erroresFrecuentes.length > 0);
-  assert.ok(stats.erroresFrecuentes.every((e) => e.descripcion.length > 0));
-  assert.equal(stats.aperturas[0]?.eco, 'C41');
-  assert.equal(stats.aperturas[0]?.partidas, 2);
-
-  // Un patron presente en las dos partidas debe aparecer como punto debil.
-  assert.ok(stats.puntosDebiles.some((c) => c.prioridad === 1));
+  const perfil = construirPerfil(informesDe('bea'));
+  assert.equal(perfil.partidas, 2);
+  assert.ok(perfil.precisionMedia > 0);
+  assert.equal(perfil.porColor.b.aperturas[0]?.eco, 'C41');
+  assert.equal(perfil.porColor.b.aperturas[0]?.partidas, 2);
 });
 
-test('un usuario sin partidas devuelve estadisticas vacias, no un error', () => {
-  const stats = calcularEstadisticas('nadie');
-  assert.equal(stats.partidas, 0);
-  assert.deepEqual(stats.erroresFrecuentes, []);
-  assert.deepEqual(stats.aperturas, []);
-  assert.equal(stats.perdidaPorFase.apertura.jugadas, 0);
+test('un usuario sin partidas devuelve un perfil vacio, no un error', () => {
+  const perfil = construirPerfil(informesDe('nadie'));
+  assert.equal(perfil.partidas, 0);
+  assert.deepEqual(perfil.fuertes, []);
+  assert.deepEqual(perfil.debiles, []);
+  assert.deepEqual(perfil.porColor.w.aperturas, []);
 });
 
 test('cambiar de bando rehace consejos y agregados sin volver a analizar', async (t) => {
@@ -159,15 +156,21 @@ test('cambiar de bando rehace consejos y agregados sin volver a analizar', async
   assert.equal(listadoDespues[0]!.precision, informe.resumen.b.precision);
   assert.equal(listadoDespues[0]!.graves, informe.resumen.b.conteo.grave);
 
-  // Las etiquetas agregadas deben ser las del nuevo bando, no una mezcla.
-  const stats = calcularEstadisticas('cris');
-  const etiquetas = new Set(stats.erroresFrecuentes.map((e) => e.etiqueta));
+  // Las filas derivadas deben ser las del nuevo bando, no una mezcla: se
+  // comprueban en la tabla, que es donde podria quedar basura.
+  const guardadas = new Set(
+    (
+      getDb()
+        .prepare('SELECT etiqueta FROM etiquetas WHERE usuario = ? AND partida_id = ?')
+        .all('cris', informe.id) as { etiqueta: string }[]
+    ).map((f) => f.etiqueta),
+  );
   for (const propia of Object.keys(informe.resumen.b.etiquetas)) {
-    assert.ok(etiquetas.has(propia as never), `falta la etiqueta ${propia} del bando corregido`);
+    assert.ok(guardadas.has(propia), `falta la etiqueta ${propia} del bando corregido`);
   }
   for (const ajena of Object.keys(informe.resumen.w.etiquetas)) {
     if (ajena in informe.resumen.b.etiquetas) continue;
-    assert.ok(!etiquetas.has(ajena as never), `quedo colgada la etiqueta ${ajena} del bando anterior`);
+    assert.ok(!guardadas.has(ajena), `quedo colgada la etiqueta ${ajena} del bando anterior`);
   }
 
   assert.equal(cambiarColor('cris', 'no-existe', 'w'), null);
@@ -193,9 +196,8 @@ test('una partida importada dos veces se actualiza, no se duplica', async (t) =>
   assert.equal(historico[0]!.id, masProfundo.id, 'queda la version mas reciente');
   assert.equal(historico[0]!.colorJugador, 'b');
 
-  // Y las etiquetas del analisis anterior no quedan colgadas.
-  const stats = calcularEstadisticas('dani');
-  assert.equal(stats.partidas, 1);
+  // Y el perfil ve una sola partida, no dos versiones de la misma.
+  assert.equal(construirPerfil(informesDe('dani')).partidas, 1);
 });
 
 test('las partidas pegadas a mano no chocan entre si aunque no tengan origen', async (t) => {

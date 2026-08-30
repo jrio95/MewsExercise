@@ -144,20 +144,72 @@ export interface PartidaResumida {
   imprecisiones: number;
 }
 
-export interface EstadisticasGlobales {
+/**
+ * Cuanta confianza merece una conclusion segun el tamano de la muestra.
+ *
+ * Decir "tu punto debil es el final" con tres partidas es ruido disfrazado de
+ * diagnostico, asi que cada hallazgo lleva su nivel y la interfaz lo enseña.
+ */
+export type Confianza = 'baja' | 'media' | 'alta';
+
+/** Una conclusion sobre el jugador, con el dato que la sostiene. */
+export interface Hallazgo {
+  id: string;
+  titulo: string;
+  detalle: string;
+  /** Cifra concreta que respalda la conclusion. */
+  evidencia: string;
+  /** Numero de partidas u ocasiones sobre las que se calcula. */
+  muestra: number;
+  confianza: Confianza;
+}
+
+export interface AperturaPerfil {
+  eco: string;
+  nombre: string;
   partidas: number;
   precisionMedia: number;
-  precisionPorPartida: { id: string; creadoEn: string; precision: number }[];
-  erroresFrecuentes: { etiqueta: Etiqueta; veces: number; partidas: number; descripcion: string }[];
+  victorias: number;
+  derrotas: number;
+  tablas: number;
+  /** Puntos por partida: victoria 1, tablas 0.5. */
+  rendimiento: number;
+  /** Diferencia entre su precision y tu precision media con ese color. */
+  desviacion: number;
+}
+
+export interface PerfilColor {
+  color: Color;
+  partidas: number;
+  precisionMedia: number;
+  /** Puntos por partida, de 0 a 1. */
+  rendimiento: number;
   perdidaPorFase: Record<Fase, { jugadas: number; perdidaMedia: number }>;
-  aperturas: {
-    eco: string;
-    nombre: string;
-    partidas: number;
-    precisionMedia: number;
-    victorias: number;
-    derrotas: number;
-    tablas: number;
-  }[];
-  puntosDebiles: Consejo[];
+  erroresFrecuentes: { etiqueta: Etiqueta; veces: number; partidas: number; descripcion: string }[];
+  aperturas: AperturaPerfil[];
+  /** Aperturas distintas por partida: cerca de 1 significa no tener repertorio. */
+  dispersionRepertorio: number;
+}
+
+export interface PerfilJugador {
+  partidas: number;
+  /** Fecha de la partida mas antigua analizada. */
+  desde: string | null;
+  precisionMedia: number;
+  /** Precision de la primera mitad frente a la segunda. */
+  tendencia: { antes: number; ahora: number } | null;
+  /** Precision de cada partida, en orden, para dibujar la evolucion. */
+  precisionPorPartida: { id: string; creadoEn: string; precision: number }[];
+  /** Porcentaje de tus jugadas que coinciden con la del motor. */
+  aciertoMejor: number;
+  /** De los fallos del rival, cuantos aprovechaste. */
+  castigo: { ocasiones: number; aprovechadas: number } | null;
+  /** Partidas terminadas sin un solo error grave. */
+  solidez: { partidas: number; sinGraves: number };
+  fuertes: Hallazgo[];
+  debiles: Hallazgo[];
+  porColor: Record<Color, PerfilColor>;
+  plan: Consejo[];
+  /** Informe redactado por IA sobre el perfil, si se ha pedido. */
+  informeIa: string | null;
 }

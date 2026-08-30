@@ -68,6 +68,15 @@ function migrar(d: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_fases_usuario ON fases (usuario, fase);
+
+    -- El informe del entrenador se guarda junto al numero de partidas con el
+    -- que se genero: si el historico crece, deja de valer y se rehace.
+    CREATE TABLE IF NOT EXISTS informes_perfil (
+      usuario     TEXT PRIMARY KEY,
+      partidas    INTEGER NOT NULL,
+      generado_en TEXT NOT NULL,
+      texto       TEXT NOT NULL
+    );
   `);
 
   anadirColumna(d, 'partidas', 'fuente', 'TEXT');

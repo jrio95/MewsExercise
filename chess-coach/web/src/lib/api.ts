@@ -1,4 +1,4 @@
-import type { EstadisticasGlobales, InformePartida, PartidaResumida } from '@shared';
+import type { InformePartida, PartidaResumida, PerfilJugador } from '@shared';
 
 /**
  * Identificador de usuario local.
@@ -120,5 +120,9 @@ export const api = {
       body: JSON.stringify({ colorJugador }),
     }),
 
-  estadisticas: () => peticion<EstadisticasGlobales>('/estadisticas'),
+  perfil: () => peticion<PerfilJugador>('/perfil'),
+
+  /** Informe del entrenador sobre el perfil; el servidor lo cachea. */
+  informePerfil: () =>
+    peticion<{ informe: string; cacheado: boolean }>('/perfil/informe', { method: 'POST' }),
 };

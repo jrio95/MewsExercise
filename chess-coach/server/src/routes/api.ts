@@ -5,16 +5,20 @@ import { narrarPartida } from '../coach/llm.js';
 import { CoachNoConfigurado, coachDisponible, explicarJugada } from '../coach/explicar.js';
 import {
   borrarPartida,
-  calcularEstadisticas,
   cambiarColor,
   guardarPartida,
+  guardarInformePerfil,
   guardarPorQue,
+  informeGuardado,
+  informesDe,
   listarPartidas,
   obtenerPartida,
   yaImportadas,
 } from '../db/games.js';
 import { pool, poolSize } from '../engine/pool.js';
 import { ChessComError, traerPartidas } from '../importar/chesscom.js';
+import { construirPerfil } from '../analysis/perfil.js';
+import { redactarInforme } from '../coach/informe.js';
 import { DEPTHS } from '../config.js';
 
 export const api = Router();
@@ -215,6 +219,51 @@ api.delete('/partidas/:id', (req, res) => {
   res.status(borrada ? 204 : 404).end();
 });
 
-api.get('/estadisticas', (req, res) => {
-  res.json(calcularEstadisticas(usuarioDe(req)));
+/**
+ * Perfil del jugador a partir de todo su historico.
+ *
+ * Se calcula al vuelo y no se guarda: cada partida nueva lo cambia, y a esta
+ * escala leer los informes cuesta milisegundos.
+ */
+api.get('/perfil', (req, res) => {
+  const usuario = usuarioDe(req);
+  const perfil = construirPerfil(informesDe(usuario));
+  perfil.informeIa = informeGuardado(usuario, perfil.partidas);
+  res.json(perfil);
 });
+
+/**
+ * Informe del entrenador sobre el perfil, redactado por el modelo.
+ *
+ * Bajo demanda y cacheado por numero de partidas: mientras no analices ninguna
+ * mas, el informe no cambia y no tiene sentido volver a pagarlo.
+ */
+api.post('/perfil/informe', async (req, res) => {
+  const usuario = usuarioDe(req);
+  const perfil = construirPerfil(informesDe(usuario));
+
+  if (perfil.partidas === 0) {
+    res.status(422).json({ error: 'Analiza alguna partida antes de pedir el informe.' });
+    return;
+  }
+
+  const guardado = informeGuardado(usuario, perfil.partidas);
+  if (guardado) {
+    res.json({ informe: guardado, cacheado: true });
+    return;
+  }
+
+  try {
+    const informe = await redactarInforme(perfil);
+    guardarInformePerfil(usuario, perfil.partidas, informe);
+    res.json({ informe, cacheado: false });
+  } catch (err) {
+    if (err instanceof CoachNoConfigurado) {
+      res.status(503).json({ error: 'El entrenador con IA no esta configurado en este servidor.' });
+      return;
+    }
+    console.error('[api] fallo el informe de perfil:', err);
+    res.status(502).json({ error: 'No se pudo generar el informe. Intentalo de nuevo.' });
+  }
+});
+

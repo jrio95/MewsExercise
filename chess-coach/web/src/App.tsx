@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Color, InformePartida, EstadisticasGlobales, PartidaResumida } from '@shared';
+import type { Color, InformePartida, PartidaResumida, PerfilJugador } from '@shared';
 import { api, type PartidaChesscom, type PeticionAnalisis } from './lib/api';
 import { PgnForm } from './components/PgnForm';
 import { Tablero } from './components/Tablero';
@@ -7,11 +7,11 @@ import { ListaJugadas } from './components/ListaJugadas';
 import { DetalleJugada } from './components/DetalleJugada';
 import { Resumen } from './components/Resumen';
 import { Historico } from './components/Historico';
-import { Progreso } from './components/Progreso';
+import { Perfil } from './components/Perfil';
 import { ImportarChesscom } from './components/ImportarChesscom';
 import { Guion } from './components/Guion';
 
-type Pestana = 'analizar' | 'historico' | 'progreso';
+type Pestana = 'analizar' | 'historico' | 'perfil';
 
 /**
  * 'guion' es el repaso guiado paso a paso, pantalla a pantalla: es el modo por
@@ -32,7 +32,7 @@ export default function App() {
   const [modo, setModo] = useState<Modo>('guion');
 
   const [partidas, setPartidas] = useState<PartidaResumida[]>([]);
-  const [stats, setStats] = useState<EstadisticasGlobales | null>(null);
+  const [perfil, setPerfil] = useState<PerfilJugador | null>(null);
   const [cargandoHistorico, setCargandoHistorico] = useState(false);
 
   useEffect(() => {
@@ -48,9 +48,9 @@ export default function App() {
   const refrescarHistorico = useCallback(async () => {
     setCargandoHistorico(true);
     try {
-      const [p, s] = await Promise.all([api.partidas(), api.estadisticas()]);
+      const [p, perf] = await Promise.all([api.partidas(), api.perfil()]);
       setPartidas(p);
-      setStats(s);
+      setPerfil(perf);
     } catch {
       // El historico es secundario: si falla, la pantalla de analisis sigue viva.
     } finally {
@@ -83,7 +83,7 @@ export default function App() {
    *
    * No abre el informe al terminar: en una importacion se encadenan varias y
    * saltar a cada una seria mareante. El valor esta en el conjunto, que se ve
-   * en Progreso.
+   * en Mi perfil.
    */
   const analizarImportada = async (partida: PartidaChesscom, nivel: PeticionAnalisis['nivel']) => {
     if (!partida.tuColor) throw new Error('No se sabe con que color jugaste esta partida.');
@@ -116,7 +116,7 @@ export default function App() {
     }
   };
 
-  /** Analiza sin abrir nada: solo para dar volumen a las estadisticas. */
+  /** Analiza sin abrir nada: solo para dar volumen al perfil. */
   const analizarEnLote = async (
     partida: PartidaChesscom,
     nivel: PeticionAnalisis['nivel'],
@@ -213,7 +213,7 @@ export default function App() {
             [
               ['analizar', 'Analizar'],
               ['historico', `Historico${partidas.length ? ` (${partidas.length})` : ''}`],
-              ['progreso', 'Progreso'],
+              ['perfil', 'Mi perfil'],
             ] as const
           ).map(([id, texto]) => (
             <button
@@ -237,7 +237,7 @@ export default function App() {
               onAnalizarYAbrir={analizarYAbrir}
               onAnalizarEnLote={analizarEnLote}
               onAbrir={abrirPartida}
-              onIrAProgreso={() => setPestana('progreso')}
+              onIrAProgreso={() => setPestana('perfil')}
               ocupado={cargando}
             />
 
@@ -316,13 +316,16 @@ export default function App() {
           />
         )}
 
-        {pestana === 'progreso' && <Progreso stats={stats} cargando={cargandoHistorico} />}
+        {pestana === 'perfil' && (
+          <Perfil perfil={perfil} cargando={cargandoHistorico} coachIa={coachIa} />
+        )}
+
       </main>
 
       <footer>
         <p>
-          Analisis con {motor ?? 'Stockfish'}. Tu historico se guarda en el servidor asociado a un
-          identificador anonimo de este navegador.
+          Analisis con {motor ?? 'Stockfish'}. Tu historico se guarda en el servidor, ligado a tu
+          usuario de Chess.com si has conectado uno, y si no a un identificador de este navegador.
         </p>
       </footer>
     </div>
