@@ -424,16 +424,15 @@ footer p { margin: 0; color: var(--texto-2); font-size: 13px; }
   min-height: 0;
 }
 
-.hueco-tablero { display: flex; align-items: flex-start; justify-content: center; min-height: 0; }
+.hueco-tablero { display: flex; align-items: flex-start; justify-content: center; flex: none; }
 
 /*
- * El texto no puede comerse el tablero: si un paso trae mucha explicacion, se
- * desplaza dentro de su propio bloque en lugar de dejar las piezas diminutas.
- * La barra fina es deliberada: sin ella el texto recortado parece un fallo de
- * maquetacion en lugar de contenido que continua.
+ * El texto ocupa lo que deja el tablero y se desplaza dentro de su bloque si no
+ * cabe. La barra fina es deliberada: sin ella el texto recortado parece un
+ * fallo de maquetacion en lugar de contenido que continua.
  */
 .guion-texto {
-  min-height: 0; max-height: 62%; overflow-y: auto; flex: none;
+  flex: 1; min-height: 0; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--borde) transparent;
   overscroll-behavior: contain;
 }

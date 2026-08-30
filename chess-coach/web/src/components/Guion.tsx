@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Calidad, Color, Evaluacion, InformePartida, JugadaAnalizada } from '@shared';
 import {
   COLOR_CALIDAD,
@@ -25,41 +25,36 @@ interface Props {
 
 /** Separación entre tablero y texto, en píxeles (debe coincidir con el CSS). */
 const HUECO = 14;
+/** Sitio reservado para el texto, pase lo que pase. */
+const ALTO_TEXTO = 200;
 const LADO_MINIMO = 180;
 
 /**
- * Calcula el lado del tablero a partir del hueco que deja el texto.
+ * Calcula el lado del tablero a partir del hueco disponible.
  *
- * Medir solo el contenedor del tablero no vale: como crece para ocupar el
- * espacio libre, el tablero acabaría centrado dentro de un hueco enorme y
- * quedaría un vacío entre la cabecera y las piezas. Midiendo el cuerpo entero y
- * restando lo que ocupa el texto, el tablero se lleva todo lo que sobra, que es
- * lo que interesa en un móvil: piezas lo más grandes posible.
+ * Deliberadamente NO depende de cuánto texto traiga el paso. Restando la altura
+ * real del texto, el tablero encogía justo en las pantallas con más que contar
+ * —las importantes— y saltaba de tamaño de una jugada a la siguiente. Con una
+ * reserva fija, el tablero mide lo mismo en todo el repaso y es el texto el que
+ * se desplaza dentro de su bloque cuando no cabe.
  */
-function useLadoTablero(
-  cuerpo: React.RefObject<HTMLDivElement>,
-  texto: React.RefObject<HTMLDivElement>,
-  recalcular: unknown,
-): number {
+function useLadoTablero(cuerpo: React.RefObject<HTMLDivElement>): number {
   const [lado, setLado] = useState(LADO_MINIMO);
 
   useLayoutEffect(() => {
-    const cajaCuerpo = cuerpo.current;
-    const cajaTexto = texto.current;
-    if (!cajaCuerpo) return;
+    const caja = cuerpo.current;
+    if (!caja) return;
 
     const medir = () => {
-      const { width, height } = cajaCuerpo.getBoundingClientRect();
-      const altoTexto = cajaTexto?.getBoundingClientRect().height ?? 0;
-      setLado(Math.max(LADO_MINIMO, Math.floor(Math.min(width, height - altoTexto - HUECO))));
+      const { width, height } = caja.getBoundingClientRect();
+      setLado(Math.max(LADO_MINIMO, Math.floor(Math.min(width, height - ALTO_TEXTO - HUECO))));
     };
 
     medir();
     const observador = new ResizeObserver(medir);
-    observador.observe(cajaCuerpo);
-    if (cajaTexto) observador.observe(cajaTexto);
+    observador.observe(caja);
     return () => observador.disconnect();
-  }, [cuerpo, texto, recalcular]);
+  }, [cuerpo]);
 
   return lado;
 }
@@ -118,8 +113,7 @@ export function Guion({ informe, onSalir, onVerDetalle, onCambiarColor, coachIa 
   };
 
   const cuerpo = useRef<HTMLDivElement>(null);
-  const texto = useRef<HTMLDivElement>(null);
-  const lado = useLadoTablero(cuerpo, texto, parada);
+  const lado = useLadoTablero(cuerpo);
 
   const resaltadas = { ...resaltarUltima(ultimaJugada), ...(anotacion?.resaltadas ?? {}) };
   const progreso = ((parada + 1) / (ultimaParada + 2)) * 100;
@@ -179,7 +173,6 @@ export function Guion({ informe, onSalir, onVerDetalle, onCambiarColor, coachIa 
         />
 
         <Panel
-          ref={texto}
           recorrido={recorrido}
           anotacion={anotacion}
           enPortada={enPortada}
@@ -239,14 +232,21 @@ interface PanelProps {
   coachIa: boolean;
 }
 
-const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
-  { recorrido, anotacion, enPortada, enCierre, ultimaJugada, proximaJugada, color, partidaId, coachIa },
-  ref,
-) {
+function Panel({
+  recorrido,
+  anotacion,
+  enPortada,
+  enCierre,
+  ultimaJugada,
+  proximaJugada,
+  color,
+  partidaId,
+  coachIa,
+}: PanelProps) {
   if (enPortada) {
     const { titulo, texto, insignia, desglose } = recorrido.resumen;
     return (
-      <div className="guion-texto" ref={ref}>
+      <div className="guion-texto">
         <div className="guion-titulo-fila">
           <h2>{titulo}</h2>
           <span className={`chip tono-${insignia.tono}`}>{insignia.texto}</span>
@@ -259,7 +259,7 @@ const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
 
   if (enCierre) {
     return (
-      <div className="guion-texto" ref={ref}>
+      <div className="guion-texto">
         <div className="guion-titulo-fila">
           <h2>{recorrido.cierre.titulo}</h2>
         </div>
@@ -274,7 +274,7 @@ const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
 
   if (anotacion) {
     return (
-      <div className="guion-texto" ref={ref}>
+      <div className="guion-texto">
         <div className="guion-titulo-fila">
           <h2>{anotacion.titulo}</h2>
           {anotacion.insignia && (
@@ -303,11 +303,11 @@ const Panel = forwardRef<HTMLDivElement, PanelProps>(function Panel(
   }
 
   return (
-    <div className="guion-texto guion-texto-simple" ref={ref}>
+    <div className="guion-texto guion-texto-simple">
       <PasoNormal ultima={ultimaJugada} proxima={proximaJugada} color={color} />
     </div>
   );
-});
+}
 
 /**
  * Lo que se ve en una jugada sin nada que comentar.
