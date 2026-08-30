@@ -60,9 +60,14 @@ comentario sale de una evaluación concreta del motor.
 - Escribes tu usuario y trae tus últimas partidas (hasta 50, buscando en los
   últimos seis meses de archivos). No hace falta login: su API pública sólo pide
   el nombre.
-- Se listan antes de analizar, con rival, Elo, resultado y control de tiempo, y
-  las que ya están en tu historial vienen marcadas y desmarcadas para no gastar
-  motor dos veces. Tu color se deduce de las cabeceras, así que no hay que elegirlo.
+- Cada partida tiene su propio botón: **Analizar** la analiza y abre su repaso al
+  momento, y las que ya lo están ofrecen **Ver**. Tu color se deduce de las
+  cabeceras, así que no hay que elegirlo.
+- Aparte, y en segundo plano, se pueden analizar todas las pendientes de golpe.
+  Eso no sirve para leer diez informes seguidos, sino para dar volumen a la
+  detección de patrones: con dos partidas Progreso no puede decir nada. Por eso
+  al terminar lleva a esa pestaña, que es donde se ve el resultado.
+- La lista sobrevive a entrar y salir del repaso, para no tener que buscar otra vez.
 - Tu historial queda ligado a ese usuario (`cc-<usuario>`), de modo que te sigue
   del móvil al ordenador sin contraseñas. **Sin autenticación**: cualquiera que
   escriba tu usuario ve tu historial. Son análisis de partidas ya públicas en

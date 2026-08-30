@@ -113,21 +113,23 @@ export function listarPartidas(usuario: string, limite = 50, desplazamiento = 0)
 }
 
 /**
- * De una lista de identificadores de origen, cuales ya estan analizados.
+ * De una lista de identificadores de origen, cuales ya estan analizados y con
+ * que partida se corresponden.
  *
- * Se consulta antes de importar para no gastar motor en partidas repetidas.
+ * Devuelve el id local, y no solo si existe, para que el listado de importacion
+ * pueda ofrecer abrir el informe que ya hay en vez de dejar la fila muerta.
  */
-export function yaImportadas(usuario: string, fuenteIds: string[]): Set<string> {
-  if (fuenteIds.length === 0) return new Set();
+export function yaImportadas(usuario: string, fuenteIds: string[]): Map<string, string> {
+  if (fuenteIds.length === 0) return new Map();
 
   const huecos = fuenteIds.map(() => '?').join(',');
   const filas = getDb()
     .prepare(
-      `SELECT fuente_id FROM partidas WHERE usuario = ? AND fuente_id IN (${huecos})`,
+      `SELECT id, fuente_id FROM partidas WHERE usuario = ? AND fuente_id IN (${huecos})`,
     )
-    .all(usuario, ...fuenteIds) as { fuente_id: string }[];
+    .all(usuario, ...fuenteIds) as { id: string; fuente_id: string }[];
 
-  return new Set(filas.map((f) => f.fuente_id));
+  return new Map(filas.map((f) => [f.fuente_id, f.id]));
 }
 
 export function obtenerPartida(usuario: string, id: string): InformePartida | null {

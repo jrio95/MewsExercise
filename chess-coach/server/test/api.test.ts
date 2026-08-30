@@ -181,7 +181,7 @@ test('una partida importada dos veces se actualiza, no se duplica', async (t) =>
   const informe = await analizarPartida({ pgn: PGN_CORTO, nivel: 'rapido', colorJugador: 'w' });
 
   guardarPartida('dani', informe, origen);
-  assert.deepEqual([...yaImportadas('dani', [origen.fuenteId])], [origen.fuenteId]);
+  assert.equal(yaImportadas('dani', [origen.fuenteId]).get(origen.fuenteId), informe.id);
   assert.equal(listarPartidas('dani').length, 1);
 
   // Reanalizar la misma partida (por ejemplo a mas profundidad) la reemplaza.

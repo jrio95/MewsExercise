@@ -1,44 +1,104 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, chesscomActual, conectarChesscom, type PartidaChesscom } from '../lib/api';
 import { fechaDia } from '../lib/formato';
 
+type Nivel = 'rapido' | 'normal' | 'profundo';
+
 interface Props {
-  /** Analiza una partida importada; devuelve true si salio bien. */
-  onAnalizar: (partida: PartidaChesscom, nivel: 'rapido' | 'normal' | 'profundo') => Promise<boolean>;
-  onTerminado: () => void;
+  /** Analiza una partida y abre su repaso; devuelve el id guardado. */
+  onAnalizarYAbrir: (partida: PartidaChesscom, nivel: Nivel) => Promise<string | null>;
+  /** Analiza en segundo plano, sin abrir nada; devuelve si salio bien. */
+  onAnalizarEnLote: (partida: PartidaChesscom, nivel: Nivel) => Promise<boolean>;
+  /** Abre el informe de una partida ya analizada. */
+  onAbrir: (partidaId: string) => void;
+  /** Al terminar un lote, llevar al usuario donde se ve el resultado. */
+  onIrAProgreso: () => void;
   ocupado: boolean;
 }
 
 /**
  * Trae partidas de Chess.com por nombre de usuario.
  *
- * Primero se listan y luego el usuario elige: analizar diez partidas lleva su
- * tiempo y no todas interesan. Las que ya estan en el historico se marcan y
- * vienen desmarcadas, para no gastar motor dos veces en lo mismo.
+ * Cada partida se analiza y se abre por si sola: es lo que se quiere hacer el
+ * 90% de las veces. El analisis en lote se mantiene aparte y en segundo plano
+ * porque sirve para otra cosa distinta: dar volumen a la deteccion de patrones,
+ * que con dos partidas no puede decir nada. Por eso al acabar lleva a Progreso,
+ * que es donde ese trabajo se ve.
  */
-export function ImportarChesscom({ onAnalizar, onTerminado, ocupado }: Props) {
+/**
+ * La lista se guarda en la sesion del navegador.
+ *
+ * Al analizar una partida se abre su repaso a pantalla completa, lo que
+ * desmonta este componente; sin esto, al volver habria que buscar otra vez.
+ */
+const CLAVE_LISTA = 'chess-coach:importadas';
+
+function listaGuardada(): PartidaChesscom[] | null {
+  try {
+    const bruto = sessionStorage.getItem(CLAVE_LISTA);
+    return bruto ? (JSON.parse(bruto) as PartidaChesscom[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function guardarLista(lista: PartidaChesscom[] | null): void {
+  try {
+    if (lista) sessionStorage.setItem(CLAVE_LISTA, JSON.stringify(lista));
+    else sessionStorage.removeItem(CLAVE_LISTA);
+  } catch {
+    // Sin sessionStorage la lista simplemente no sobrevive: no es critico.
+  }
+}
+
+export function ImportarChesscom({
+  onAnalizarYAbrir,
+  onAnalizarEnLote,
+  onAbrir,
+  onIrAProgreso,
+  ocupado,
+}: Props) {
   const [usuario, setUsuario] = useState(chesscomActual() ?? '');
   const [limite, setLimite] = useState(10);
-  const [nivel, setNivel] = useState<'rapido' | 'normal' | 'profundo'>('rapido');
-  const [partidas, setPartidas] = useState<PartidaChesscom[] | null>(null);
-  const [elegidas, setElegidas] = useState<Set<string>>(new Set());
+  const [nivel, setNivel] = useState<Nivel>('rapido');
+  const [partidas, setPartidas] = useState<PartidaChesscom[] | null>(listaGuardada);
   const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
-  const [fallidas, setFallidas] = useState(0);
+  const [analizando, setAnalizando] = useState<string | null>(null);
+  const [lote, setLote] = useState<{ hechas: number; total: number; fallidas: number } | null>(null);
+
+  useEffect(() => {
+    guardarLista(partidas);
+  }, [partidas]);
+
+  /**
+   * Marca filas como analizadas para que pasen a ofrecer "Ver".
+   *
+   * Se escribe en sessionStorage a mano y no solo por el efecto: analizar una
+   * partida abre su repaso a pantalla completa, lo que desmonta este componente
+   * antes de que React llegue a guardar el cambio.
+   */
+  const marcarAnalizadas = (cambios: Map<string, string>) => {
+    const actualizada =
+      partidas?.map((p) => {
+        const id = cambios.get(p.fuenteId);
+        return id ? { ...p, yaAnalizada: true, partidaId: id } : p;
+      }) ?? null;
+
+    guardarLista(actualizada);
+    setPartidas(actualizada);
+  };
 
   const buscar = async (e: React.FormEvent) => {
     e.preventDefault();
     setBuscando(true);
     setError(null);
     setPartidas(null);
-    setProgreso(null);
+    setLote(null);
     try {
       const r = await api.chesscom(usuario, limite);
       conectarChesscom(usuario);
       setPartidas(r);
-      // Se preseleccionan solo las que aportan algo: nuevas y con tu color claro.
-      setElegidas(new Set(r.filter((p) => !p.yaAnalizada && p.tuColor).map((p) => p.fuenteId)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo conectar con Chess.com.');
     } finally {
@@ -46,38 +106,39 @@ export function ImportarChesscom({ onAnalizar, onTerminado, ocupado }: Props) {
     }
   };
 
-  const alternar = (id: string) => {
-    setElegidas((previo) => {
-      const copia = new Set(previo);
-      if (copia.has(id)) copia.delete(id);
-      else copia.add(id);
-      return copia;
-    });
+  const analizarUna = async (p: PartidaChesscom) => {
+    if (!p.tuColor) return;
+    setAnalizando(p.fuenteId);
+    try {
+      const id = await onAnalizarYAbrir(p, nivel);
+      if (id) marcarAnalizadas(new Map([[p.fuenteId, id]]));
+    } finally {
+      setAnalizando(null);
+    }
   };
 
-  const analizarTodas = async () => {
-    if (!partidas) return;
-    const cola = partidas.filter((p) => elegidas.has(p.fuenteId) && p.tuColor);
-    setProgreso({ hechas: 0, total: cola.length });
-    setFallidas(0);
+  const pendientes = partidas?.filter((p) => !p.yaAnalizada && p.tuColor) ?? [];
 
-    // En serie a proposito: el motor es el mismo pool y lanzarlas todas a la vez
-    // no acelera nada, solo hace que el progreso deje de significar algo.
-    let fallos = 0;
-    for (const [i, partida] of cola.entries()) {
-      const bien = await onAnalizar(partida, nivel);
-      if (!bien) fallos++;
-      setProgreso({ hechas: i + 1, total: cola.length });
+  const analizarPendientes = async () => {
+    setLote({ hechas: 0, total: pendientes.length, fallidas: 0 });
+    let fallidas = 0;
+
+    // En serie a proposito: el motor es el mismo pool, lanzarlas a la vez no
+    // acelera nada y hace que el progreso deje de significar algo.
+    for (const [i, partida] of pendientes.entries()) {
+      const bien = await onAnalizarEnLote(partida, nivel);
+      if (!bien) fallidas++;
+      setLote({ hechas: i + 1, total: pendientes.length, fallidas });
     }
 
-    setFallidas(fallos);
-    setPartidas((previas) =>
-      previas?.map((p) => (elegidas.has(p.fuenteId) ? { ...p, yaAnalizada: true } : p)) ?? null,
-    );
-    onTerminado();
+    // El lote no abre nada, asi que no hay id que guardar: basta con marcarlas.
+    const tras = partidas?.map((p) => (pendientes.includes(p) ? { ...p, yaAnalizada: true } : p)) ?? null;
+    guardarLista(tras);
+    setPartidas(tras);
+    onIrAProgreso();
   };
 
-  const seleccionadas = partidas?.filter((p) => elegidas.has(p.fuenteId) && p.tuColor).length ?? 0;
+  const enMarcha = ocupado || analizando !== null || (lote !== null && lote.hechas < lote.total);
 
   return (
     <div className="tarjeta importar">
@@ -126,68 +187,86 @@ export function ImportarChesscom({ onAnalizar, onTerminado, ocupado }: Props) {
 
       {partidas && partidas.length > 0 && (
         <>
+          <label className="importar-nivel">
+            <span className="etiqueta">Profundidad del analisis</span>
+            <select value={nivel} onChange={(e) => setNivel(e.target.value as Nivel)} disabled={enMarcha}>
+              <option value="rapido">Rapida (unos segundos)</option>
+              <option value="normal">Normal (recomendada)</option>
+              <option value="profundo">Profunda (mas lenta)</option>
+            </select>
+          </label>
+
           <ul className="importar-lista">
             {partidas.map((p) => (
-              <li key={p.fuenteId} className={p.yaAnalizada ? 'ya' : ''}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={elegidas.has(p.fuenteId)}
-                    onChange={() => alternar(p.fuenteId)}
-                    disabled={!p.tuColor || ocupado}
-                  />
-                  <span className="importar-datos">
-                    <span className="importar-rival">
-                      {p.tuColor === 'w' ? '⚪' : p.tuColor === 'b' ? '⚫' : '?'} vs {p.rival}
-                      {p.eloRival && <span className="importar-elo">{p.eloRival}</span>}
-                    </span>
-                    <span className="importar-meta">
-                      {p.fecha ? fechaDia(p.fecha) : 'sin fecha'} · {p.resultado}
-                      {p.controlTiempo && ` · ${p.controlTiempo}`}
-                    </span>
+              <li key={p.fuenteId}>
+                <span className="importar-datos">
+                  <span className="importar-rival">
+                    <span className={`bolita ${p.tuColor === 'w' ? 'blancas' : 'negras'}`} />
+                    {p.rival}
+                    {p.eloRival && <span className="importar-elo">{p.eloRival}</span>}
                   </span>
-                  {p.yaAnalizada && <span className="chip tono-bien">Ya analizada</span>}
-                  {!p.tuColor && <span className="chip tono-aviso">No es tuya</span>}
-                </label>
+                  <span className="importar-meta">
+                    {p.fecha ? fechaDia(p.fecha) : 'sin fecha'} · {p.resultado}
+                    {p.controlTiempo && ` · ${p.controlTiempo}`}
+                  </span>
+                </span>
+
+                {!p.tuColor ? (
+                  <span className="chip tono-aviso">No es tuya</span>
+                ) : p.yaAnalizada && p.partidaId ? (
+                  <button
+                    type="button"
+                    className="importar-boton ver"
+                    onClick={() => onAbrir(p.partidaId!)}
+                    disabled={enMarcha}
+                  >
+                    Ver
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="importar-boton"
+                    onClick={() => analizarUna(p)}
+                    disabled={enMarcha}
+                  >
+                    {analizando === p.fuenteId ? 'Analizando…' : 'Analizar'}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
 
-          <div className="importar-acciones">
-            <label className="importar-cantidad">
-              <span className="etiqueta">Profundidad</span>
-              <select value={nivel} onChange={(e) => setNivel(e.target.value as never)} disabled={ocupado}>
-                <option value="rapido">Rapida</option>
-                <option value="normal">Normal</option>
-                <option value="profundo">Profunda</option>
-              </select>
-            </label>
+          {pendientes.length > 1 && (
+            <div className="importar-lote">
+              <button
+                type="button"
+                className="enlace-lote"
+                onClick={analizarPendientes}
+                disabled={enMarcha}
+              >
+                {lote && lote.hechas < lote.total
+                  ? `Analizando ${lote.hechas + 1} de ${lote.total}…`
+                  : `Analizar las ${pendientes.length} de golpe`}
+              </button>
+              <span className="importar-lote-nota">
+                Sin abrirlas: sirve para que Progreso tenga datos con los que detectar tus patrones.
+              </span>
+            </div>
+          )}
 
-            <button
-              type="button"
-              className="primario"
-              onClick={analizarTodas}
-              disabled={ocupado || seleccionadas === 0}
-            >
-              {progreso && progreso.hechas < progreso.total
-                ? `Analizando ${progreso.hechas + 1} de ${progreso.total}…`
-                : `Analizar ${seleccionadas} ${seleccionadas === 1 ? 'partida' : 'partidas'}`}
-            </button>
-          </div>
-
-          {progreso && (
+          {lote && (
             <div className="importar-progreso">
               <div
                 className="importar-progreso-relleno"
-                style={{ width: `${(progreso.hechas / Math.max(progreso.total, 1)) * 100}%` }}
+                style={{ width: `${(lote.hechas / Math.max(lote.total, 1)) * 100}%` }}
               />
             </div>
           )}
 
-          {progreso?.hechas === progreso?.total && progreso && progreso.total > 0 && (
+          {lote && lote.hechas === lote.total && lote.total > 0 && (
             <p className="aviso">
-              Listo: {progreso.total - fallidas} de {progreso.total} analizadas
-              {fallidas > 0 && ` (${fallidas} fallaron)`}. Mira la pestana Progreso.
+              {lote.total - lote.fallidas} de {lote.total} analizadas
+              {lote.fallidas > 0 && ` (${lote.fallidas} fallaron)`}.
             </p>
           )}
         </>

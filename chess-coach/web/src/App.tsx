@@ -85,20 +85,45 @@ export default function App() {
    * saltar a cada una seria mareante. El valor esta en el conjunto, que se ve
    * en Progreso.
    */
-  const analizarImportada = async (
+  const analizarImportada = async (partida: PartidaChesscom, nivel: PeticionAnalisis['nivel']) => {
+    if (!partida.tuColor) throw new Error('No se sabe con que color jugaste esta partida.');
+    return api.analizar({
+      pgn: partida.pgn,
+      nivel,
+      colorJugador: partida.tuColor,
+      narrar: false,
+      fuente: 'chesscom',
+      fuenteId: partida.fuenteId,
+    });
+  };
+
+  /** Analiza una partida importada y abre su repaso: el caso normal. */
+  const analizarYAbrir = async (
+    partida: PartidaChesscom,
+    nivel: PeticionAnalisis['nivel'],
+  ): Promise<string | null> => {
+    setError(null);
+    try {
+      const informe = await analizarImportada(partida, nivel);
+      setInforme(informe);
+      setIndice(primerFalloDe(informe));
+      setModo('guion');
+      void refrescarHistorico();
+      return informe.id;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo analizar la partida.');
+      return null;
+    }
+  };
+
+  /** Analiza sin abrir nada: solo para dar volumen a las estadisticas. */
+  const analizarEnLote = async (
     partida: PartidaChesscom,
     nivel: PeticionAnalisis['nivel'],
   ): Promise<boolean> => {
-    if (!partida.tuColor) return false;
     try {
-      await api.analizar({
-        pgn: partida.pgn,
-        nivel,
-        colorJugador: partida.tuColor,
-        narrar: false,
-        fuente: 'chesscom',
-        fuenteId: partida.fuenteId,
-      });
+      await analizarImportada(partida, nivel);
+      void refrescarHistorico();
       return true;
     } catch {
       return false;
@@ -209,8 +234,10 @@ export default function App() {
         {pestana === 'analizar' && (
           <>
             <ImportarChesscom
-              onAnalizar={analizarImportada}
-              onTerminado={refrescarHistorico}
+              onAnalizarYAbrir={analizarYAbrir}
+              onAnalizarEnLote={analizarEnLote}
+              onAbrir={abrirPartida}
+              onIrAProgreso={() => setPestana('progreso')}
               ocupado={cargando}
             />
 

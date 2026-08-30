@@ -143,26 +143,49 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .importar-busqueda button { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; }
 .importar-nota { margin: 10px 0 0; font-size: 12.5px; color: var(--texto-2); }
 
-.importar-lista { list-style: none; margin: 16px 0 0; padding: 0; max-height: 320px; overflow-y: auto; }
-.importar-lista li { border-bottom: 1px solid var(--borde); }
-.importar-lista li:last-child { border-bottom: 0; }
-.importar-lista li.ya { opacity: 0.55; }
-.importar-lista label {
-  display: flex; align-items: center; gap: 11px;
-  padding: 10px 2px; cursor: pointer;
+.importar-nivel { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+
+.importar-lista { list-style: none; margin: 14px 0 0; padding: 0; }
+.importar-lista li {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--borde);
 }
-.importar-lista input { accent-color: var(--acento); flex: none; }
-.importar-datos { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.importar-rival { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.importar-lista li:last-child { border-bottom: 0; }
+.importar-datos { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.importar-rival {
+  font-size: 14.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
 .importar-elo {
-  background: var(--fondo-3); color: var(--texto-2);
-  padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 700;
+  background: var(--fondo-3); color: var(--texto-2); flex: none;
+  padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;
 }
 .importar-meta { font-size: 12px; color: var(--texto-2); }
 
-.importar-acciones { display: flex; gap: 12px; align-items: end; margin-top: 16px; }
-.importar-acciones label { display: flex; flex-direction: column; gap: 6px; }
-.importar-acciones .primario { flex: 1; padding: 12px 18px; border-radius: 8px; font-size: 15px; }
+/* El bando se ve por el color del disco, que no se confunde a simple vista. */
+.bolita { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.bolita.blancas { background: #eceff4; }
+.bolita.negras { background: #23262e; border: 1px solid #4b515e; }
+
+.importar-boton {
+  flex: none; background: var(--acento); color: #0d1117;
+  border: 0; border-radius: 7px; padding: 9px 16px;
+  font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+}
+.importar-boton:hover:not(:disabled) { filter: brightness(1.1); }
+.importar-boton.ver { background: transparent; color: var(--texto-2); border: 1px solid var(--borde); }
+.importar-boton.ver:hover:not(:disabled) { color: var(--texto); border-color: var(--texto-2); }
+.importar-boton:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* El lote es secundario: resuelve otra necesidad, no la de repasar una partida. */
+.importar-lote { display: flex; flex-direction: column; gap: 3px; margin-top: 16px; }
+.enlace-lote {
+  background: none; border: 0; color: var(--acento); cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 600; text-align: left; padding: 0;
+}
+.enlace-lote:hover:not(:disabled) { text-decoration: underline; }
+.enlace-lote:disabled { opacity: 0.5; cursor: not-allowed; }
+.importar-lote-nota { font-size: 12.5px; color: var(--texto-2); }
 
 .importar-progreso { height: 5px; background: var(--fondo-3); border-radius: 3px; margin-top: 12px; overflow: hidden; }
 .importar-progreso-relleno { height: 100%; background: var(--acento); transition: width 0.3s ease; }
@@ -509,7 +532,7 @@ footer p { margin: 0; color: var(--texto-2); font-size: 13px; }
   .fila-controles { grid-template-columns: 1fr; }
   .importar-busqueda { grid-template-columns: 1fr auto; }
   .importar-busqueda button { grid-column: 1 / -1; width: 100%; padding: 13px; }
-  .importar-acciones { flex-direction: column; align-items: stretch; }
+  .importar-boton { padding: 10px 14px; }
   .acciones { flex-direction: column; }
   .acciones button { width: 100%; padding: 14px 20px; font-size: 15px; }
 

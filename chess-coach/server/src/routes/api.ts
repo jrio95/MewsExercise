@@ -110,7 +110,11 @@ api.get('/chesscom/:usuario', async (req, res) => {
     );
 
     res.json(
-      partidas.map((p) => ({ ...p, yaAnalizada: conocidas.has(p.fuenteId) })),
+      partidas.map((p) => ({
+        ...p,
+        yaAnalizada: conocidas.has(p.fuenteId),
+        partidaId: conocidas.get(p.fuenteId) ?? null,
+      })),
     );
   } catch (err) {
     if (err instanceof ChessComError) {

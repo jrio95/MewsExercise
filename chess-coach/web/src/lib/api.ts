@@ -84,6 +84,8 @@ export interface PartidaChesscom {
   controlTiempo: string | null;
   enlace: string | null;
   yaAnalizada: boolean;
+  /** Id de la partida ya guardada, para poder abrir su informe. */
+  partidaId: string | null;
 }
 
 export const api = {
