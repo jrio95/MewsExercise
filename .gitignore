@@ -345,8 +345,3 @@ azure-env*.ps1
 azure_env*.ps1
 
 .DS_Store
-# chess-coach
-chess-coach/node_modules/
-chess-coach/**/node_modules/
-chess-coach/**/dist/
-chess-coach/.data/
